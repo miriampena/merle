@@ -51,7 +51,8 @@
 -export([
     stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4, replace/2,
     replace/4, cas/5, set/2, flushall/0, flushall/1, verbosity/1, add/2,
-    cas/3, getskey/1, connect/0, connect/2, delete/1, disconnect/0
+    cas/3, getskey/1, connect/0, connect/2, delete/1, disconnect/0, 
+    incr/2, decr/2, addcounter/1, literal/1
 ]).
 
 %% gen_server callbacks
@@ -228,6 +229,22 @@ cas(Key, Flag, ExpTime, CasUniq, Value) ->
 	    [X] -> X
 	end.
 
+literal(Str) when is_binary(Str) ->
+    gen_server2:call(?SERVER, {literal, Str}).
+
+addcounter(Key) ->
+    Flag = random:uniform(?RANDOM_MAX),
+    gen_server2:call(?SERVER, {addcounter, {Key,integer_to_list(Flag),"0"}}),
+    ok.
+
+incr(Key,Value) when is_integer(Value) ->
+    gen_server2:call(?SERVER, {incr, {Key, integer_to_list(Value)}}),
+    ok.
+
+decr(Key,Value) when is_integer(Value) ->
+    gen_server2:call(?SERVER, {decr, {Key, integer_to_list(Value)}}),
+    ok.
+
 %% @doc connect to memcached with defaults
 connect() ->
 	connect(?DEFAULT_HOST, ?DEFAULT_PORT).
@@ -298,6 +315,20 @@ handle_call({set, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
         Bin
     ),
     {reply, Reply, Socket};
+%% special clause to add a counter to memcached instead of serialized
+%% erlang data (literal 0xFFFFFFFF instead of the erlang bitstring 
+%% <<131,98,255,255,255,255,255,255,255,255,0>>)
+handle_call({addcounter, {Key, Flag, ExpTime}}, _From, Socket) ->
+	Bytes = <<"8">>,
+	Bin = <<"FFFFFFFF">>, %% rolls over to 0, happily 
+    Reply = send_storage_cmd(
+        Socket,
+        iolist_to_binary([
+            <<"set ">>, Key, <<" ">>, Flag, <<" ">>, ExpTime, <<" ">>, Bytes
+        ]),
+        Bin
+    ),
+    {reply, Reply, Socket};
 
 handle_call({add, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
 	Bin = term_to_binary(Value),
@@ -335,7 +366,22 @@ handle_call({cas, {Key, Flag, ExpTime, CasUniq, Value}}, _From, Socket) ->
         ]),
         Bin
     ),
-    {reply, Reply, Socket}.
+    {reply, Reply, Socket};
+%% Added by Jeremy D. Acord, March 2012
+handle_call({incr, {Key,Value}}, _From, Socket) when is_list(Value) ->
+    io:fwrite("trying to increment ~s by ~s~n",[Key,Value]),
+    CMD = iolist_to_binary([<<"incr ">>,Key,<<" ">>,Value, <<" noreply">>]),
+    io:fwrite("created comand ~s~n",[CMD]),
+    Reply = send_generic_cmd(Socket,CMD),
+    {reply,Reply,Socket};
+handle_call({decr, {Key,Value}}, _From, Socket) when is_list(Value) ->
+    Reply = send_generic_cmd( %% gonna hack together the whole line
+	      Socket,
+	      iolist_to_binary([<<"decr ">>,Key,<<" ">>,Value, <<" noreply">>])),
+    {reply,Reply,Socket};
+handle_call({literal,Str}, _From, Socket) -> %% for testing
+    Reply = send_generic_cmd(Socket,Str),
+    {reply,Reply,Socket}.
 
 %% @private
 handle_cast(stop, State) ->
