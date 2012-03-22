@@ -232,18 +232,33 @@ cas(Key, Flag, ExpTime, CasUniq, Value) ->
 literal(Str) when is_binary(Str) ->
     gen_server2:call(?SERVER, {literal, Str}).
 
+%% currently checks via incr to see if a counter exists before
+%% creating it. This is a subsitute for using a cas operation to
+%% initialize the counter.
 addcounter(Key) ->
     Flag = random:uniform(?RANDOM_MAX),
-    gen_server2:call(?SERVER, {addcounter, {Key,integer_to_list(Flag),"0"}}),
-    ok.
+    case incr(Key,0) of
+	not_found -> 
+	    case gen_server2:call(?SERVER, 
+				  {addcounter, {Key,integer_to_list(Flag),"0"}}) of
+		["STORED"] -> ok;
+		["NOT_STORED"] -> not_stored;
+		[X] -> X
+	    end;
+	_ -> ok
+    end.
 
 incr(Key,Value) when is_integer(Value) ->
-    gen_server2:call(?SERVER, {incr, {Key, integer_to_list(Value)}}),
-    ok.
-
+    case gen_server2:call(?SERVER, {incr, {Key, integer_to_list(Value)}}) of
+	["NOT_FOUND"] -> not_found;
+	[Str]         -> {ok,list_to_integer(Str)} 
+    end.
+	
 decr(Key,Value) when is_integer(Value) ->
-    gen_server2:call(?SERVER, {decr, {Key, integer_to_list(Value)}}),
-    ok.
+    case gen_server2:call(?SERVER, {decr, {Key, integer_to_list(Value)}}) of
+	["NOT_FOUND"] -> not_found; 
+	[Str]         -> {ok,list_to_integer(Str)} 
+    end.
 
 %% @doc connect to memcached with defaults
 connect() ->
@@ -319,8 +334,8 @@ handle_call({set, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
 %% erlang data (literal 0xFFFFFFFF instead of the erlang bitstring 
 %% <<131,98,255,255,255,255,255,255,255,255,0>>)
 handle_call({addcounter, {Key, Flag, ExpTime}}, _From, Socket) ->
-	Bytes = <<"8">>,
 	Bin = <<"FFFFFFFF">>, %% rolls over to 0, happily 
+	Bytes = <<"8">>,
     Reply = send_storage_cmd(
         Socket,
         iolist_to_binary([
@@ -369,15 +384,12 @@ handle_call({cas, {Key, Flag, ExpTime, CasUniq, Value}}, _From, Socket) ->
     {reply, Reply, Socket};
 %% Added by Jeremy D. Acord, March 2012
 handle_call({incr, {Key,Value}}, _From, Socket) when is_list(Value) ->
-    io:fwrite("trying to increment ~s by ~s~n",[Key,Value]),
-    CMD = iolist_to_binary([<<"incr ">>,Key,<<" ">>,Value, <<" noreply">>]),
-    io:fwrite("created comand ~s~n",[CMD]),
+    CMD = iolist_to_binary([<<"incr ">>,Key,<<" ">>,Value]),
     Reply = send_generic_cmd(Socket,CMD),
     {reply,Reply,Socket};
 handle_call({decr, {Key,Value}}, _From, Socket) when is_list(Value) ->
-    Reply = send_generic_cmd( %% gonna hack together the whole line
-	      Socket,
-	      iolist_to_binary([<<"decr ">>,Key,<<" ">>,Value, <<" noreply">>])),
+    CMD = iolist_to_binary([<<"decr ">>,Key,<<" ">>,Value]),
+    Reply = send_generic_cmd(Socket,CMD),
     {reply,Reply,Socket};
 handle_call({literal,Str}, _From, Socket) -> %% for testing
     Reply = send_generic_cmd(Socket,Str),
