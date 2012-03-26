@@ -14,10 +14,11 @@ This code is available as Open Source Software under the MIT license.
 
 
 Features:
-* Support for stats, version, getkey, getskey, delete, set, add, replace, cas, flushall, verbosity
+* Support for stats, version, getkey, getskey, delete, set, add, replace, cas, flushall, verbosity, incr and decr (with specially set "counter" keys)
 
 Notes:
 * Uses term_to_binary and binary_to_term to serialize/deserialize Erlang terms before sending/receiving them. This allows for native Erlang terms to be returned from memcached but doesn't play well using other languages after setting values with merle or using merle to get values set by other languages.
+* getkey and getskey currently don't work on keys initialized with addcounter/1. The binary data you get back won't be a serialized erlang integer, and so the implicity binary_to_term done by getkey and getskey provokes disaster.
 
 Merle Based Projects:
 
@@ -81,3 +82,23 @@ ok
  "STAT evictions 0","STAT bytes_read 216",
  "STAT bytes_written 468","STAT limit_maxbytes 67108864",
  "STAT threads 1","END"]
+
+> merle:addcounter("my_counter").
+ok
+> merle:incr("my_counter",0).
+{ok,0}
+> merle:incr("my_counter",12).
+{ok,12}
+> merle:addcounter("my_counter").
+ok
+> merle:incr("my_counter",12).
+{ok,24}
+> merle:decr("my_counter",30).
+{ok,0}
+> merle:incr("nonexistent_counter",0).
+not_found
+> merle:delete("my_counter").
+ok
+> merle:delete("my_counter").
+not_found
+
