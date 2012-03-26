@@ -47,14 +47,15 @@
     binary, {packet, raw}, {nodelay, true},{reuseaddr, true}, {active, true}
 ]).
 
-%% gen_server API
--export([
-    stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4, replace/2,
-    replace/4, cas/5, set/2, flushall/0, flushall/1, verbosity/1, add/2,
-    cas/3, getskey/1, connect/0, connect/2, delete/1, disconnect/0, 
-    incr/2, decr/2, addcounter/1, literal/1
-]).
+%% gen_server API 
+-export([stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4,
+	 replace/2, replace/4, cas/5, set/2, flushall/0, flushall/1,
+	 verbosity/1, add/2, cas/3, getskey/1, connect/0, connect/2, delete/1,
+	 disconnect/0, incr/2, decr/2, addcounter/1 ]).
 
+-ifdef(DEV).
+-export([literal/1]).
+-endif.
 %% gen_server callbacks
 -export([
     init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -229,12 +230,47 @@ cas(Key, Flag, ExpTime, CasUniq, Value) ->
 	    [X] -> X
 	end.
 
+-ifdef(DEV).
+%% @doc Submit an arbitrary string to memcached using send_generic_cmd/2. This
+%% is a utility function that allows a developer to experiment with the strings
+%% they will submit to memcached. Memcached is intolerant of malformed input, so
+%% this is not meant to be used in a serious application. Hence, it is only
+%% included in merle.erl if compiled with the DEV variable defined.
+%%
+%% The string submitted to literal can be a multiline command; simply include
+%% CRLF (<<"\r\n">> or <<10,13>>) to delimit the end of the first line. The
+%% argument to literal/1 SHOULD NOT be terminated with CRLF, as this will be
+%% appended by merle:send_generic_cmd/2
+%% 
+%% @see merle:send_generic_cmd/2
+%% @spec (string()) -> [string()]
+%% @private
 literal(Str) when is_binary(Str) ->
     gen_server2:call(?SERVER, {literal, Str}).
+-endif.
 
-%% currently checks via incr to see if a counter exists before
-%% creating it. This is a subsitute for using a cas operation to
-%% initialize the counter.
+%% @doc Add a key to memcached which can be used as a counter via incr/decr.
+%% Currently, addcounter/1 checks via incr to see if a counter exists before
+%% creating it. This is a subsitute for using a cas operation to initialize the
+%% counter.
+%% 
+%% Unlike the rest of merle, which traffics in serialized erlang data types,
+%% addcounter/1 should create a value which non-erlang memcached clients can
+%% work with.
+%%
+%% To this effect, addcounter/1 uses a new clause merle:handle_call/2 which
+%% sends
+%% 
+%% ```
+%% set <Key> <Flag> 0 8\r\nFFFFFFFF\r\n'''
+%% 
+%% to memcached via send_storage_cmd/2 (which adds the terminal CRLF and
+%% generates the Flag parameter), thus creating a key with name Key with 64-bits
+%% of space allocated for an integer value. FFFFFFFF is a negative value, not
+%% acceptable by memcached, and so is coerced to zero. Hey presto! A counter.
+%% 
+%% @TODO need an addcounter/2 to to accept an expiration time for the key and
+%% maintain addcounter/1 as a convenience function (@equiv addcounter(Key,0)).
 addcounter(Key) ->
     Flag = random:uniform(?RANDOM_MAX),
     case incr(Key,0) of
@@ -248,12 +284,32 @@ addcounter(Key) ->
 	_ -> ok
     end.
 
+%% @doc Interface to the incr method in memcached's protocol. 
+%% 
+%% incr/2 and decr/2 both use erlang:interger_to_list/1 to convert their integer
+%% arguments into a decimal string representation, which is then submitted to
+%% memcached.
+%% 
+%% @spec incr(Key::list(),Value::integer()) -> (not_found | {ok,NewValue::integer()})
+%% @see merle:decr/2
 incr(Key,Value) when is_integer(Value) ->
     case gen_server2:call(?SERVER, {incr, {Key, integer_to_list(Value)}}) of
 	["NOT_FOUND"] -> not_found;
 	[Str]         -> {ok,list_to_integer(Str)} 
     end.
-	
+
+%% @doc Interface to the decr method in memcached's protocol. 
+%% 
+%% incr/2 and decr/2 both use erlang:interger_to_list/1 to convert their integer
+%% arguments into a decimal string representation, which is then submitted to
+%% memcached.
+%%
+%% Since incr and decr in memcached are defined to operate on the binary
+%% representations of 64-bit unsigned integers, it is not possible to decrement
+%% a value in memcached to below zero.
+%% 
+%% @spec decr(Key::list(),Value::integer()) -> (not_found | {ok,NewValue::integer()})
+%% @see merle:incr/2
 decr(Key,Value) when is_integer(Value) ->
     case gen_server2:call(?SERVER, {decr, {Key, integer_to_list(Value)}}) of
 	["NOT_FOUND"] -> not_found; 
@@ -334,7 +390,7 @@ handle_call({set, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
 %% erlang data (literal 0xFFFFFFFF instead of the erlang bitstring 
 %% <<131,98,255,255,255,255,255,255,255,255,0>>)
 handle_call({addcounter, {Key, Flag, ExpTime}}, _From, Socket) ->
-	Bin = <<"FFFFFFFF">>, %% rolls over to 0, happily 
+	Bin = <<"FFFFFFFF">>, %% coerced to 0, happily 
 	Bytes = <<"8">>,
     Reply = send_storage_cmd(
         Socket,
