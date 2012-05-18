@@ -51,7 +51,7 @@
 -export([stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4,
 	 replace/2, replace/4, cas/5, set/2, set/3, flushall/0, flushall/1,
 	 verbosity/1, add/2, cas/3, getskey/1, connect/0, connect/2, delete/1,
-	 disconnect/0, incr/2, decr/2, addcounter/1 ]).
+	 disconnect/0, incr/2, decr/2, incr_safe/2, incr_safe/3 ]).
 
 -ifdef(DEV).
 -export([literal/1]).
@@ -253,39 +253,45 @@ literal(Str) when is_binary(Str) ->
 -endif.
 
 %% @doc Add a key to memcached which can be used as a counter via incr/decr.
-%% Currently, addcounter/1 checks via incr to see if a counter exists before
+%% Currently, incr_safe/2 checks via incr to see if a counter exists before
 %% creating it. This is a subsitute for using a cas operation to initialize the
 %% counter.
 %% 
 %% Unlike the rest of merle, which traffics in serialized erlang data types,
-%% addcounter/1 should create a value which non-erlang memcached clients can
+%% incr_safe/2 should create a value which non-erlang memcached clients can
 %% work with.
 %%
-%% To this effect, addcounter/1 uses a new clause merle:handle_call/2 which
+%% To this effect, incr_safe/2 uses a new clause merle:handle_call/2 which
 %% sends
 %% 
 %% ```
-%% set <Key> <Flag> 0 8\r\nFFFFFFFF\r\n'''
+%% set <Key> <Flag> 0 4\r\n0000\r\n'''
 %% 
 %% to memcached via send_storage_cmd/2 (which adds the terminal CRLF and
 %% generates the Flag parameter), thus creating a key with name Key with 64-bits
 %% of space allocated for an integer value. FFFFFFFF is a negative value, not
 %% acceptable by memcached, and so is coerced to zero. Hey presto! A counter.
 %% 
-%% @TODO need an addcounter/2 to to accept an expiration time for the key and
-%% maintain addcounter/1 as a convenience function (@equiv addcounter(Key,0)).
-addcounter(Key) ->
+incr_safe(Key, Value) ->
+    incr_safe(Key, Value, "0"). 
+
+incr_safe(Key, Value, ExpTime) when is_integer(ExpTime) ->
+    incr_safe(Key, Value, integer_to_list(ExpTime));
+
+incr_safe(Key, Value, ExpTime) -> 
     Flag = random:uniform(?RANDOM_MAX),
-    case incr(Key,0) of
-	not_found -> 
-	    case gen_server2:call(?SERVER, 
-				  {addcounter, {Key,integer_to_list(Flag),"0"}}) of
-		["STORED"] -> ok;
-		["NOT_STORED"] -> not_stored;
-		[X] -> X
-	    end;
-	_ -> ok
+    case incr(Key, Value) of
+    	not_found ->
+    	    case gen_server2:call(?SERVER, {addcounter, {Key, integer_to_list(Flag), ExpTime}}) of
+            	["STORED"] ->
+            	    incr(Key, Value);
+            	["NOT_STORED"] ->
+            	    not_stored;
+            	[X] -> X
+    	    end;
+    	Result -> Result
     end.
+
 
 %% @doc Interface to the incr method in memcached's protocol. 
 %% 
@@ -393,8 +399,8 @@ handle_call({set, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
 %% erlang data (literal 0xFFFFFFFF instead of the erlang bitstring 
 %% <<131,98,255,255,255,255,255,255,255,255,0>>)
 handle_call({addcounter, {Key, Flag, ExpTime}}, _From, Socket) ->
-	Bin = <<"FFFFFFFF">>, %% coerced to 0, happily 
-	Bytes = <<"8">>,
+	Bin = <<"0000">>,
+	Bytes = <<"4">>,
     Reply = send_storage_cmd(
         Socket,
         iolist_to_binary([
