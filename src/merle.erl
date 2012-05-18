@@ -49,7 +49,7 @@
 
 %% gen_server API 
 -export([stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4,
-	 replace/2, replace/4, cas/5, set/2, flushall/0, flushall/1,
+	 replace/2, replace/4, cas/5, set/2, set/3, flushall/0, flushall/1,
 	 verbosity/1, add/2, cas/3, getskey/1, connect/0, connect/2, delete/1,
 	 disconnect/0, incr/2, decr/2, addcounter/1 ]).
 
@@ -158,8 +158,11 @@ delete(Key, Time) ->
 
 %% @doc Store a key/value pair.
 set(Key, Value) ->
+    set(Key, "0", Value).
+
+set(Key, ExpTime Value) ->
     Flag = random:uniform(?RANDOM_MAX),
-    set(Key, integer_to_list(Flag), "0", Value).
+    set(Key, integer_to_list(Flag), ExpTime, Value).
 
 set(Key, Flag, ExpTime, Value) when is_atom(Key) ->
 	set(atom_to_list(Key), Flag, ExpTime, Value);
