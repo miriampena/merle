@@ -160,7 +160,7 @@ delete(Key, Time) ->
 set(Key, Value) ->
     set(Key, "0", Value).
 
-set(Key, ExpTime Value) ->
+set(Key, ExpTime, Value) ->
     Flag = random:uniform(?RANDOM_MAX),
     set(Key, integer_to_list(Flag), ExpTime, Value).
 
