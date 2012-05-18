@@ -1,0 +1,13 @@
+{application, merle,
+ [
+  {description, "Erlang Memcached Client"},
+  {vsn, "1"},
+  {modules, []},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { merle_app, []}},
+  {env, []}
+ ]}.
