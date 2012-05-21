@@ -51,7 +51,7 @@
 -export([stats/0, stats/1, version/0, getkey/1, delete/2, set/4, add/4,
 	 replace/2, replace/4, cas/5, set/2, set/3, flushall/0, flushall/1,
 	 verbosity/1, add/2, cas/3, getskey/1, connect/0, connect/2, delete/1,
-	 disconnect/0, incr/2, decr/2, incr_safe/2, incr_safe/3 ]).
+	 disconnect/0, incr/2, decr/2, incr_counter/2, incr_counter/3, getcounter/1 ]).
 
 -ifdef(DEV).
 -export([literal/1]).
@@ -102,13 +102,23 @@ flushall(Delay) ->
 	end.
 
 %% @doc retrieve value based off of key
-getkey(Key) when is_atom(Key) ->
-	getkey(atom_to_list(Key));
 getkey(Key) ->
-	case gen_server2:call(?SERVER, {getkey,{Key}}) of
+    getkey(Key, term).
+    
+getkey(Key, DataType) when is_atom(Key) ->
+	getkey(atom_to_list(Key), DataType);
+getkey(Key, DataType) ->
+	case gen_server2:call(?SERVER, {getkey,{Key, DataType}}) of
 	    ["END"] -> undefined;
 	    [X] -> X
 	end.
+	
+%% @doc used in conjunction with incr_counter to retrieve an integer value from cache
+getcounter(Key) ->
+    case getkey(Key, list) of 
+        undefined -> undefined;
+        Number -> list_to_integer(Number)
+    end.
 
 %% @doc retrieve value based off of key for use with cas
 getskey(Key) when is_atom(Key) ->
@@ -253,15 +263,15 @@ literal(Str) when is_binary(Str) ->
 -endif.
 
 %% @doc Add a key to memcached which can be used as a counter via incr/decr.
-%% Currently, incr_safe/2 checks via incr to see if a counter exists before
+%% Currently, incr_counter/2 checks via incr to see if a counter exists before
 %% creating it. This is a subsitute for using a cas operation to initialize the
 %% counter.
 %% 
 %% Unlike the rest of merle, which traffics in serialized erlang data types,
-%% incr_safe/2 should create a value which non-erlang memcached clients can
+%% incr_counter/2 should create a value which non-erlang memcached clients can
 %% work with.
 %%
-%% To this effect, incr_safe/2 uses a new clause merle:handle_call/2 which
+%% To this effect, incr_counter/2 uses a new clause merle:handle_call/2 which
 %% sends
 %% 
 %% ```
@@ -272,13 +282,13 @@ literal(Str) when is_binary(Str) ->
 %% of space allocated for an integer value. FFFFFFFF is a negative value, not
 %% acceptable by memcached, and so is coerced to zero. Hey presto! A counter.
 %% 
-incr_safe(Key, Value) ->
-    incr_safe(Key, Value, "0"). 
+incr_counter(Key, Value) ->
+    incr_counter(Key, Value, "0"). 
 
-incr_safe(Key, Value, ExpTime) when is_integer(ExpTime) ->
-    incr_safe(Key, Value, integer_to_list(ExpTime));
+incr_counter(Key, Value, ExpTime) when is_integer(ExpTime) ->
+    incr_counter(Key, Value, integer_to_list(ExpTime));
 
-incr_safe(Key, Value, ExpTime) -> 
+incr_counter(Key, Value, ExpTime) -> 
     Flag = random:uniform(?RANDOM_MAX),
     case incr(Key, Value) of
     	not_found ->
@@ -369,8 +379,8 @@ handle_call({flushall, {Delay}}, _From, Socket) ->
     Reply = send_generic_cmd(Socket, iolist_to_binary([<<"flush_all ">>, Delay])),
     {reply, Reply, Socket};
 
-handle_call({getkey, {Key}}, _From, Socket) ->
-    Reply = send_get_cmd(Socket, iolist_to_binary([<<"get ">>, Key])),
+handle_call({getkey, {Key, DataType}}, _From, Socket) ->
+    Reply = send_get_cmd(Socket, iolist_to_binary([<<"get ">>, Key]), DataType),
     {reply, Reply, Socket};
 
 handle_call({getskey, {Key}}, _From, Socket) ->
@@ -495,9 +505,9 @@ send_storage_cmd(Socket, Cmd, Value) ->
 
 %% @private
 %% @doc send_get_cmd/2 function for retreival commands
-send_get_cmd(Socket, Cmd) ->
+send_get_cmd(Socket, Cmd, DataType) ->
     gen_tcp:send(Socket, <<Cmd/binary, "\r\n">>),
-	Reply = recv_complex_get_reply(Socket),
+	Reply = recv_complex_get_reply(Socket, DataType),
 	Reply.
 
 %% @private
@@ -520,7 +530,7 @@ recv_simple_reply() ->
 
 %% @private
 %% @doc receive function for respones containing VALUEs
-recv_complex_get_reply(Socket) ->
+recv_complex_get_reply(Socket, DataType) ->
 	receive
 		%% For receiving get responses where the key does not exist
 		{tcp, Socket, <<"END\r\n">>} -> ["END"];
@@ -530,7 +540,7 @@ recv_complex_get_reply(Socket) ->
   			Parse = io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)),
   			{ok,[_,_,_,Bytes], ListBin} = Parse,
   			Bin = list_to_binary(ListBin),
-  			Reply = get_data(Socket, Bin, Bytes, length(ListBin)),
+  			Reply = get_data(Socket, Bin, Bytes, length(ListBin), DataType),
   			[Reply];
   		{error, closed} ->
   			connection_closed
@@ -549,7 +559,7 @@ recv_complex_gets_reply(Socket) ->
   			Parse = io_lib:fread("~s ~s ~u ~u ~u\r\n", binary_to_list(Data)),
   			{ok,[_,_,_,Bytes,CasUniq], ListBin} = Parse,
   			Bin = list_to_binary(ListBin),
-  			Reply = get_data(Socket, Bin, Bytes, length(ListBin)),
+  			Reply = get_data(Socket, Bin, Bytes, length(ListBin), term),
   			[CasUniq, Reply];
   		{error, closed} ->
   			connection_closed
@@ -558,15 +568,20 @@ recv_complex_gets_reply(Socket) ->
 
 %% @private
 %% @doc recieve loop to get all data
-get_data(Socket, Bin, Bytes, Len) when Len < Bytes + 7->
+get_data(Socket, Bin, Bytes, Len, DataType) when Len < Bytes + 7->
     receive
         {tcp, Socket, Data} ->
             Combined = <<Bin/binary, Data/binary>>,
-            get_data(Socket, Combined, Bytes, size(Combined));
+            get_data(Socket, Combined, Bytes, size(Combined), DataType);
      	{error, closed} ->
   			connection_closed
         after ?TIMEOUT -> timeout
     end;
-get_data(_, Data, Bytes, _) ->
+get_data(_, Data, _Bytes, _, list) ->
+    {ok,[List], _} = io_lib:fread("~s\r\nEND\r\n", binary_to_list(Data)),    
+    List;
+get_data(_, Data, Bytes, _, term) ->
 	<<Bin:Bytes/binary, "\r\nEND\r\n">> = Data,
-    binary_to_term(Bin).
+    binary_to_term(Bin);
+get_data(_, _, _, _, _) ->
+    error.
