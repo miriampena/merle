@@ -118,7 +118,8 @@ getkeys(Ref, Keys) when is_list(Keys) ->
 %% @doc used in conjunction with incr_counter to retrieve an integer value from cache
 getcounter(Ref, Key) ->
     case getkey(Ref, Key) of 
-        undefined -> undefined;
+        {error, not_found} -> undefined;
+        {error, _} -> undefined;
         Number -> list_to_integer(Number)
     end.
 
@@ -268,11 +269,11 @@ incr_counter(Ref, Key, Value, ExpTime) ->
     case incr(Ref, Key, Value) of
     	not_found ->
     	    case gen_server2:call(Ref, {addcounter, {Key, integer_to_list(Flag), ExpTime}}) of
-            	["STORED"] ->
+            	{ok, stored} ->
             	    incr(Ref, Key, Value);
-            	["NOT_STORED"] ->
+            	{error, not_stored} ->
             	    not_stored;
-            	[X] -> X
+            	X -> X
     	    end;
     	Result -> Result
     end.
@@ -288,8 +289,10 @@ incr_counter(Ref, Key, Value, ExpTime) ->
 %% @see merle:decr/2
 incr(Ref, Key,Value) when is_integer(Value) ->
     case gen_server2:call(Ref, {incr, {Key, integer_to_list(Value)}}) of
-	["NOT_FOUND"] -> not_found;
-	[Str]         -> {ok,list_to_integer(Str)} 
+	    {error, not_found} -> not_found;
+	    Line -> 
+	        {ok, [IntegerString], []} = io_lib:fread("~s\r\n", binary_to_list(Line)),		
+	        {ok, list_to_integer(IntegerString)} 
     end.
 
 %% @doc Interface to the decr method in memcached's protocol. 
@@ -306,8 +309,8 @@ incr(Ref, Key,Value) when is_integer(Value) ->
 %% @see merle:incr/2
 decr(Ref, Key, Value) when is_integer(Value) ->
     case gen_server2:call(Ref, {decr, {Key, integer_to_list(Value)}}) of
-	["NOT_FOUND"] -> not_found; 
-	[Str]         -> {ok,list_to_integer(Str)} 
+	    {error, not_found} -> not_found; 
+	    [Str] -> {ok, list_to_integer(Str)} 
     end.
 
 %% @doc connect to memcached with defaults
@@ -384,6 +387,7 @@ handle_call({set, {Key, Flag, ExpTime, Value}}, _From, Socket) ->
         Bin
     ),
     {reply, Reply, Socket};
+
 %% special clause to add a counter to memcached instead of serialized
 %% erlang data (literal 0xFFFFFFFF instead of the erlang bitstring 
 %% <<131,98,255,255,255,255,255,255,255,255,0>>)
@@ -436,18 +440,17 @@ handle_call({cas, {Key, Flag, ExpTime, CasUniq, Value}}, _From, Socket) ->
         Bin
     ),
     {reply, Reply, Socket};
+
 %% Added by Jeremy D. Acord, March 2012
-handle_call({incr, {Key,Value}}, _From, Socket) when is_list(Value) ->
+handle_call({incr, {Key, Value}}, _From, Socket) when is_list(Value) ->
     CMD = iolist_to_binary([<<"incr ">>,Key,<<" ">>,Value]),
-    Reply = send_generic_cmd(Socket,CMD),
-    {reply,Reply,Socket};
-handle_call({decr, {Key,Value}}, _From, Socket) when is_list(Value) ->
+    Reply = send_generic_cmd(Socket, CMD),
+    {reply, Reply, Socket};
+
+handle_call({decr, {Key, Value}}, _From, Socket) when is_list(Value) ->
     CMD = iolist_to_binary([<<"decr ">>,Key,<<" ">>,Value]),
-    Reply = send_generic_cmd(Socket,CMD),
-    {reply,Reply,Socket};
-handle_call({literal,Str}, _From, Socket) -> %% for testing
-    Reply = send_generic_cmd(Socket,Str),
-    {reply,Reply,Socket}.
+    Reply = send_generic_cmd(Socket, CMD),
+    {reply, Reply, Socket}.
 
 %% @private
 handle_cast(stop, State) ->
@@ -558,13 +561,13 @@ parse_simple_response_line(<<"OK", _B/binary>>) -> ok;
 parse_simple_response_line(<<"ERROR", _B/binary>> =L ) -> {error, L};
 parse_simple_response_line(<<"CLIENT_ERROR", _B/binary>> =L ) -> {error, L};
 parse_simple_response_line(<<"SERVER_ERROR", _B/binary>> =L) -> {error, L};
-parse_simple_response_line(<<"STORED", _B/binary>>) -> ok;
-parse_simple_response_line(<<"NOT_STORED", _B/binary>> ) -> ok;
+parse_simple_response_line(<<"STORED", _B/binary>>) -> {ok, stored};
+parse_simple_response_line(<<"NOT_STORED", _B/binary>> ) -> {error, not_stored};
 parse_simple_response_line(<<"EXISTS", _B/binary>> ) -> {error, exists};
 parse_simple_response_line(<<"NOT_FOUND", _B/binary>> ) -> {error, not_found};
 parse_simple_response_line(<<"DELETED", _B/binary>> ) -> ok;
 parse_simple_response_line(<<"VERSION", _B/binary>> =L) -> {ok, L};
-parse_simple_response_line(Line) -> {error, {unknown_response, Line}}.
+parse_simple_response_line(Line) -> Line.
 
 
 %% @private
@@ -590,7 +593,7 @@ recv_complex_get_reply(Socket, Accum) ->
 		{error, Error} ->
 			{error, Error}
 	end.
-		
+
 
 %% @private
 %% @doc receive function for cas responses containing VALUEs
