@@ -123,7 +123,7 @@ getcounter(Ref, Key, Timeout) ->
     case getkey(Ref, Key, Timeout) of 
         {error, not_found} -> undefined;
         {error, _} -> undefined;
-        Number -> list_to_integer(Number)
+        {ok, NumberBin} -> list_to_integer(binary_to_list(NumberBin))
     end.
 
 %% @doc retrieve value based off of key for use with cas
@@ -586,8 +586,15 @@ recv_complex_get_reply(Socket, Timeout, Accum) ->
 			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
 				{ok, <<Value:Bytes/binary, "\r\n">>} -> 
 					inet:setopts(Socket, ?TCP_OPTS_LINE),
-					recv_complex_get_reply(Socket, 
-						[{Key, binary_to_term(Value)}|Accum]);
+					
+					FinalValue = 
+					    try binary_to_term(Value)
+					        catch 
+					            _:_ -> Value
+					    end,
+					
+					recv_complex_get_reply(Socket, Timeout, [{Key, FinalValue}|Accum]);
+					
 				{error, Error} ->
 					{error, Error}
 			end;
