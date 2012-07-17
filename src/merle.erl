@@ -582,24 +582,28 @@ recv_complex_get_reply(Socket, Timeout, Accum) ->
 		{ok, <<"NOT_FOUND", _B/binary>>} ->
 		    {error, not_found};
 		{ok, Data} ->
-  			{ok,[_,Key,_,Bytes], []} = 
-				io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)),
+		    case io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)) of
+		        {ok,[_,Key,_,Bytes], []} ->
             		inet:setopts(Socket, ?TCP_OPTS_RAW),
-			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
-				{ok, <<Value:Bytes/binary, "\r\n">>} -> 
-					inet:setopts(Socket, ?TCP_OPTS_LINE),
+        			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
+        				{ok, <<Value:Bytes/binary, "\r\n">>} -> 
+        					inet:setopts(Socket, ?TCP_OPTS_LINE),
 					
-					FinalValue = 
-					    try binary_to_term(Value)
-					        catch 
-					            _:_ -> Value
-					    end,
+        					FinalValue = 
+        					    try binary_to_term(Value)
+        					        catch 
+        					            _:_ -> Value
+        					    end,
 					
-					recv_complex_get_reply(Socket, Timeout, [{Key, FinalValue}|Accum]);
+        					recv_complex_get_reply(Socket, Timeout, [{Key, FinalValue}|Accum]);
 					
-				{error, Error} ->
-					{error, Error}
-			end;
+        				{error, Error} ->
+        					{error, Error}
+        			end;
+        		ParsedData ->
+        		    log4erl:error("Memcache socket unexpected read ~p", [ParsedData]),
+        		    {error, timed_out}
+        	end;
 		{error, Error} ->
 			{error, Error}
 	end.
