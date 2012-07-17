@@ -123,7 +123,7 @@ getcounter(Ref, Key, Timeout) ->
     case getkey(Ref, Key, Timeout) of 
         {error, not_found} -> undefined;
         {error, _} -> undefined;
-        {ok, NumberBin} -> list_to_integer(binary_to_list(NumberBin))
+        {ok, NumberBin} -> list_to_integer(string:strip(binary_to_list(NumberBin)))
     end.
 
 %% @doc retrieve value based off of key for use with cas
@@ -579,6 +579,8 @@ recv_complex_get_reply(Socket, Timeout, Accum) ->
 	case gen_tcp:recv(Socket, 0, Timeout) of
 		{ok, <<"END\r\n">>} -> 
 			Accum;
+		{ok, <<"NOT_FOUND", _B/binary>>} ->
+		    {error, not_found};
 		{ok, Data} ->
   			{ok,[_,Key,_,Bytes], []} = 
 				io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)),
