@@ -122,7 +122,9 @@ getkeys(Ref, Keys, Timeout) when is_list(Keys) ->
 getcounter(Ref, Key, Timeout) ->
     case getkey(Ref, Key, Timeout) of 
         {error, not_found} -> undefined;
-        {error, _} -> undefined;
+        {error, Error} -> 
+            log4erl:error("Encountered error while getting counter from memcache: ~p", [Error]),
+            undefined;
         {ok, NumberBin} -> list_to_integer(string:strip(binary_to_list(NumberBin)))
     end.
 
