@@ -105,8 +105,8 @@ flushall(Ref, Delay) ->
 getkey(Ref, Key, Timeout) when is_atom(Key) ->
 	getkey(Ref, atom_to_list(Key), Timeout);
 getkey(Ref, Key, Timeout) ->
-	gen_server2:call(Ref, {getkey, {Key, Timeout}}).
-
+    gen_server2:call(Ref, {getkey, {Key, Timeout}}).
+        
 %% @doc retrieve multiple values based on keys
 getkeys(Ref, Keys, Timeout) when is_list(Keys) ->
 	StringKeys = lists:map(fun
@@ -121,10 +121,7 @@ getkeys(Ref, Keys, Timeout) when is_list(Keys) ->
 %% @doc used in conjunction with incr_counter to retrieve an integer value from cache
 getcounter(Ref, Key, Timeout) ->
     case getkey(Ref, Key, Timeout) of 
-        {error, not_found} -> undefined;
-        {error, Error} -> 
-            log4erl:error("Encountered error while getting counter from memcache: ~p", [Error]),
-            undefined;
+        {error, _} -> undefined;
         {ok, NumberBin} -> list_to_integer(string:strip(binary_to_list(NumberBin)))
     end.
 
@@ -329,6 +326,7 @@ start_link(Host, Port) ->
 
 %% @private
 init([Host, Port]) ->
+    log4erl:info("Socket initialized!"),
     gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE).
 
 handle_call({stats}, _From, Socket) ->
@@ -474,6 +472,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% @private
 %% @doc Closes the socket
 terminate(_Reason, Socket) ->
+    log4erl:info("Socket terminated!"),
     gen_tcp:close(Socket),
     ok.
 
@@ -507,8 +506,11 @@ send_get_cmd(Socket, Cmd, Timeout) ->
     Reply = case recv_complex_get_reply(Socket, Timeout) of
 		[{_, Value}] -> {ok, Value};
 		[] -> {error, not_found};
-		{error, Error} -> {error, Error}
-    	    end,
+		{error, Error} -> 
+            log4erl:error("Encountered error from memcache; killing connection now: ~p", [Error]),
+            erlang:exit(Error),
+            {error, Error}
+    	end,
     inet:setopts(Socket, ?TCP_OPTS_ACTIVE),
     Reply.
 
@@ -557,8 +559,13 @@ recv_simple_reply(Timeout) ->
         	inet:setopts(Socket, ?TCP_OPTS_ACTIVE),
         	parse_simple_response_line(Data); 
         {error, closed} ->
+            log4erl:error("Encountered error while receiving simple reply from memcache; killing connection now."),
+            erlang:exit(connection_closed),
   			connection_closed
-    after Timeout -> {error, timeout}
+    after Timeout -> 
+        log4erl:error("Encountered timeout while receiving simple reply from memcache; killing connection now."),
+        erlang:exit(timeout),
+        {error, timeout}
     end.
 parse_simple_response_line(<<"OK", _B/binary>>) -> ok;
 parse_simple_response_line(<<"ERROR", _B/binary>> =L ) -> {error, L};
@@ -581,31 +588,25 @@ recv_complex_get_reply(Socket, Timeout, Accum) ->
 	case gen_tcp:recv(Socket, 0, Timeout) of
 		{ok, <<"END\r\n">>} -> 
 			Accum;
-		{ok, <<"NOT_FOUND", _B/binary>>} ->
-		    {error, not_found};
 		{ok, Data} ->
-		    case io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)) of
-		        {ok,[_,Key,_,Bytes], []} ->
-            		inet:setopts(Socket, ?TCP_OPTS_RAW),
-        			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
-        				{ok, <<Value:Bytes/binary, "\r\n">>} -> 
-        					inet:setopts(Socket, ?TCP_OPTS_LINE),
-					
-        					FinalValue = 
-        					    try binary_to_term(Value)
-        					        catch 
-        					            _:_ -> Value
-        					    end,
-					
-        					recv_complex_get_reply(Socket, Timeout, [{Key, FinalValue}|Accum]);
-					
-        				{error, Error} ->
-        					{error, Error}
-        			end;
-        		ParsedData ->
-        		    log4erl:error("Memcache socket unexpected read ~p", [ParsedData]),
-        		    {error, timed_out}
-        	end;
+		    log4erl:info("Memcache data: ~p", [Data]),
+		    {ok,[_,Key,_,Bytes], []} =  io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)),
+    		inet:setopts(Socket, ?TCP_OPTS_RAW),
+			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
+				{ok, <<Value:Bytes/binary, "\r\n">>} -> 
+					inet:setopts(Socket, ?TCP_OPTS_LINE),
+		
+					FinalValue = 
+					    try binary_to_term(Value)
+					        catch 
+					            _:_ -> Value
+					    end,
+		
+					recv_complex_get_reply(Socket, Timeout, [{Key, FinalValue}|Accum]);
+		
+				{error, Error} ->
+					{error, Error}
+			end;
 		{error, Error} ->
 			{error, Error}
 	end.

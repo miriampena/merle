@@ -2,7 +2,7 @@
 
 -export([start_link/1, init/1, handle_call/3, handle_info/2, handle_cast/2, terminate/2]).
 
--define(RESTART_INTERVAL, 15 * 1000). %% retry each 5 seconds. 
+-define(RESTART_INTERVAL, 5000). %% retry each 5 seconds. 
 
 -record(state, {mcd_pid, 
                 host,
@@ -12,6 +12,7 @@ start_link([Host, Port]) ->
     gen_server:start_link(?MODULE, [Host, Port], []).
 
 init([Host, Port]) ->
+   log4erl:info("Merle watcher initialized!"),
    erlang:process_flag(trap_exit, true),
    self() ! timeout,
    {ok, #state{mcd_pid = undefined, host = Host, port = Port}}.
@@ -59,6 +60,7 @@ handle_info(_Info, S) ->
 handle_cast(_Cast, S) ->
     {noreply, S}.
 terminate(_Reason, _S) ->
+    log4erl:info("Merle watcher terminated!"),
     ok.
 
 
