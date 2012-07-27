@@ -589,7 +589,6 @@ recv_complex_get_reply(Socket, Timeout, Accum) ->
 		{ok, <<"END\r\n">>} -> 
 			Accum;
 		{ok, Data} ->
-		    log4erl:info("Memcache data: ~p", [Data]),
 		    {ok,[_,Key,_,Bytes], []} =  io_lib:fread("~s ~s ~u ~u\r\n", binary_to_list(Data)),
     		inet:setopts(Socket, ?TCP_OPTS_RAW),
 			case  gen_tcp:recv(Socket, Bytes+2, Timeout) of
