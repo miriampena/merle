@@ -1,7 +1,7 @@
 -module(local_pg2).
 
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
--export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/1, which_groups/0]).
+-export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, which_groups/0]).
 
 -export([start/0, start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -21,6 +21,7 @@ create(Name) ->
         _ ->
             ok
     end.
+    
 delete(Name) ->
     ensure_started(),
     gen_server:call(?MODULE, {delete, Name}).
@@ -53,8 +54,9 @@ which_groups() ->
     [K || {K, _Members} <- ets:tab2list(?TABLE)].
 
     
-get_closest_pid(Name) ->
+get_closest_pid(random, Name) ->
     ensure_started(),
+    
     case ets:lookup(?TABLE, Name) of
         [] ->
             {error, {no_process, Name}};
@@ -63,6 +65,19 @@ get_closest_pid(Name) ->
             %% http://lethain.com/entry/2009/sep/12/load-balancing-across-erlang-process-groups/
             {_, _, X} = erlang:now(),
             lists:nth((X rem length(Members)) +1, Members)
+    end;
+
+get_closest_pid(round_robin, Name) ->
+    ensure_started(),
+    
+    % Get the round robin index
+    RoundRobinIndex = ets:update_counter(?TABLE, {Name, rr_index}, 1),
+    
+    case ets:lookup(?TABLE, Name) of
+        [] ->
+            {error, {no_process, Name}};
+        [{Name, Members}] ->
+            lists:nth(RoundRobinIndex rem length(Members), Members)
     end.
 
 
@@ -70,9 +85,11 @@ init([]) ->
     process_flag(trap_exit, true),
     ets:new(?TABLE, [set, protected, named_table]),
     {ok, []}.
+
 handle_call({create, Name}, _From, S) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
+            ets:insert(?TABLE, {{Name, rr_index}, 0}),
             ets:insert(?TABLE, {Name, []});
         _ ->
             ok
@@ -84,8 +101,15 @@ handle_call({join, Name, Pid}, _From, S) ->
         [] ->
             {reply, no_such_group, S};
         [{Name, Members}] ->
+
+            % NOTE: skip one index since we are about to grow the list, this prevents collisions
+            ets:update_counter(?TABLE, {Name, rr_index}, 1),
+
+            % insert new pid into the table
             ets:insert(?TABLE, {Name, [Pid | Members]}),
+
             link(Pid),
+
             %%TODO: add pid to linked ones on state..
             {reply, ok, S}
     end;
@@ -113,8 +137,10 @@ handle_cast(_Cast, S) ->
     {noreply, S}.
 
 handle_info({'EXIT', Pid, _} , S) ->
+    log4erl:error("Caught local_pg2 EXIT... leaving pg"),
     del_member(Pid),
     {noreply, S};
+    
 handle_info(_Info, S) ->
     {noreply, S}.
 
@@ -122,6 +148,7 @@ terminate(_Reason, _S) ->
     ets:delete(?TABLE),
     %%do not unlink, if this fails, dangling processes should be killed
     ok.
+
 %%%-----------------------------------------------------------------
 %%% Internal functions
 %%%-----------------------------------------------------------------
