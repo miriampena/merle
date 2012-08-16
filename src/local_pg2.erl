@@ -77,13 +77,13 @@ get_closest_pid(round_robin, Name) ->
         [] ->
             {error, {no_process, Name}};
         [{Name, Members}] ->
-            lists:nth(RoundRobinIndex rem length(Members), Members)
+            lists:nth((RoundRobinIndex rem length(Members)) + 1, Members)
     end.
 
 
 init([]) ->
     process_flag(trap_exit, true),
-    ets:new(?TABLE, [set, protected, named_table]),
+    ets:new(?TABLE, [set, public, named_table]),
     {ok, []}.
 
 handle_call({create, Name}, _From, S) ->
@@ -154,19 +154,22 @@ terminate(_Reason, _S) ->
 %%%-----------------------------------------------------------------
 del_member(Pid) ->
     L = ets:tab2list(?TABLE),
-    lists:foreach(fun({Name, Members}) ->
-                      case lists:member(Pid, Members) of
-                            true ->
-                                case lists:delete(Pid, Members) of
-                                    [] ->
-                                        ets:delete(?TABLE, Name);
-                                    NewMembers ->
-                                        ets:insert(?TABLE, {Name, NewMembers})
-                                end;
-                            false ->
-                                ok
-                       end
-                   end, L).
+    lists:foreach(fun(Elem) -> del_member_func(Elem, Pid) end, L).
+                   
+del_member_func({{_, rr_index}, _}, _Pid) ->
+    ok;
+del_member_func({Name, Members}, Pid) ->
+    case lists:member(Pid, Members) of
+          true ->
+              case lists:delete(Pid, Members) of
+                  [] ->
+                      ets:delete(?TABLE, Name);
+                  NewMembers ->
+                      ets:insert(?TABLE, {Name, NewMembers})
+              end;
+          false ->
+              ok
+     end.    
 
 ensure_started() ->
     case whereis(?MODULE) of

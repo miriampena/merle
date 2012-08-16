@@ -8,6 +8,7 @@
 
 start_link(Instances, ConnectionsPerInstance) ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    local_pg2:start(),
     merle_cluster:configure(Instances, ConnectionsPerInstance),
     {ok, Pid}.
 
