@@ -1,6 +1,6 @@
 -module(merle_cluster).
 
--export([configure/2]).
+-export([configure/2, exec/4]).
 
 index_map(F, List) ->
     {Map, _} = lists:mapfoldl(fun(X, Iter) -> {F(X, Iter), Iter +1} end, 1, List),
