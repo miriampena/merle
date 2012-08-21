@@ -123,7 +123,7 @@ handle_call({join, Name, Pid}, _From, S) ->
             ets:update_counter(?INDEXES_TABLE, {Name, rr_index}, 1),
 
             % create an entry that will represent a lock for this pid
-            ets:insert(?INDEXES_TABLE, {Pid, use_count}, 0),
+            ets:insert(?INDEXES_TABLE, {{Pid, use_count}, 0}),
 
             % insert new pid into the table
             ets:insert(?TABLE, {Name, [Pid | Members]}),
