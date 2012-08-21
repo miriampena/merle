@@ -6,6 +6,7 @@
 -export([start/0, start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(TABLE, local_pg2_table).
+-define(INDEXES_TABLE, local_pg2_indexes_table).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -71,7 +72,7 @@ get_closest_pid(round_robin, Name) ->
     ensure_started(),
     
     % Get the round robin index
-    RoundRobinIndex = ets:update_counter(?TABLE, {Name, rr_index}, 1),
+    RoundRobinIndex = ets:update_counter(?INDEXES_TABLE, {Name, rr_index}, 1),
     
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -84,12 +85,13 @@ get_closest_pid(round_robin, Name) ->
 init([]) ->
     process_flag(trap_exit, true),
     ets:new(?TABLE, [set, public, named_table]),
+    ets:new(?INDEXES_TABLE, [set, public, named_table]),
     {ok, []}.
 
 handle_call({create, Name}, _From, S) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
-            ets:insert(?TABLE, {{Name, rr_index}, 0}),
+            ets:insert(?INDEXES_TABLE, {{Name, rr_index}, 0}),
             ets:insert(?TABLE, {Name, []});
         _ ->
             ok
@@ -103,7 +105,7 @@ handle_call({join, Name, Pid}, _From, S) ->
         [{Name, Members}] ->
 
             % NOTE: skip one index since we are about to grow the list, this prevents collisions
-            ets:update_counter(?TABLE, {Name, rr_index}, 1),
+            ets:update_counter(?INDEXES_TABLE, {Name, rr_index}, 1),
 
             % insert new pid into the table
             ets:insert(?TABLE, {Name, [Pid | Members]}),
@@ -146,6 +148,7 @@ handle_info(_Info, S) ->
 
 terminate(_Reason, _S) ->
     ets:delete(?TABLE),
+    ets:delete(?INDEXES_TABLE),
     %%do not unlink, if this fails, dangling processes should be killed
     ok.
 
@@ -156,8 +159,6 @@ del_member(Pid) ->
     L = ets:tab2list(?TABLE),
     lists:foreach(fun(Elem) -> del_member_func(Elem, Pid) end, L).
                    
-del_member_func({{_, rr_index}, _}, _Pid) ->
-    ok;
 del_member_func({Name, Members}, Pid) ->
     case lists:member(Pid, Members) of
           true ->
