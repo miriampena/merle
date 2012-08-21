@@ -1,7 +1,7 @@
 -module(local_pg2).
 
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
--export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, which_groups/0]).
+-export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, release_pid/1, which_groups/0]).
 
 -export([start/0, start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -69,18 +69,33 @@ get_closest_pid(random, Name) ->
     end;
 
 get_closest_pid(round_robin, Name) ->
-    ensure_started(),
-    
     % Get the round robin index
     RoundRobinIndex = ets:update_counter(?INDEXES_TABLE, {Name, rr_index}, 1),
     
     case ets:lookup(?TABLE, Name) of
         [] ->
             {error, {no_process, Name}};
-        [{Name, Members}] ->
-            lists:nth((RoundRobinIndex rem length(Members)) + 1, Members)
+        [{Name, Members}] ->            
+            Pid = lists:nth((RoundRobinIndex rem length(Members)) + 1, Members),
+            
+            UseCount = ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, 1),
+            
+            case Pid =< 1 of
+                true -> 
+                    UseCount;
+                false ->
+                    {full, Pid}
+            end
+                    
     end.
-
+    
+release_pid(Pid) ->
+    case is_process_alive(Pid) of
+        true ->
+            ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, -1);
+        false ->
+            no_proc
+    end.
 
 init([]) ->
     process_flag(trap_exit, true),
@@ -106,6 +121,9 @@ handle_call({join, Name, Pid}, _From, S) ->
 
             % NOTE: skip one index since we are about to grow the list, this prevents collisions
             ets:update_counter(?INDEXES_TABLE, {Name, rr_index}, 1),
+
+            % create an entry that will represent a lock for this pid
+            ets:insert(?INDEXES_TABLE, {Pid, use_count}, 0),
 
             % insert new pid into the table
             ets:insert(?TABLE, {Name, [Pid | Members]}),

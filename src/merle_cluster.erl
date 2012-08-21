@@ -37,3 +37,72 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
         end, 
         SortedMemcachedHosts
     ).
+
+
+exec(Key, Fun, FullDefault, ConnectionTimeout) ->
+    S = merle_cluster_dynamic:get_server(Key),
+
+    FromPid = self(),
+
+    ConnFetchPid = spawn(
+        fun() -> 
+
+            MerleConn = local_pg2:get_closest_pid(round_robin, S),
+            MonitorRef = erlang:monitor(process, FromPid),
+
+            FromPid ! {merle_conn, MerleConn},
+
+            receive
+                {'DOWN', MonitorRef, _, _, _} -> 
+
+                    log4erl:error("Merle connection fetch process received 'DOWN' message"),
+
+                    local_pg2:release_pid(MerleConn),
+
+                    ok;
+
+                done -> 
+
+                    ok;
+
+                Other -> 
+
+                    log4erl:error("Merle connection unexpected message ~p", [Other])
+
+            after 1000 ->
+
+                log4erl:error("Merle connection fetch process timed out")
+
+            end,
+
+            true = erlang:demonitor(MonitorRef)
+        end
+    ),
+
+    ReturnValue = receive 
+        {merle_conn, {full, P}} ->
+            log4erl:error("Merle pool is full!"),
+
+            local_pg2:release_pid(P),
+
+            ConnFetchPid ! done,
+
+            FullDefault;
+
+        {merle_conn, P} ->
+            Value = Fun(P, Key),
+
+            local_pg2:release_pid(P),
+
+            ConnFetchPid ! done,
+
+            Value
+
+        after ConnectionTimeout ->
+
+            exit(ConnFetchPid, kill),
+
+            FullDefault
+    end,
+
+    ReturnValue.
