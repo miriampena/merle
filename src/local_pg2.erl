@@ -80,9 +80,9 @@ get_closest_pid(round_robin, Name) ->
             
             UseCount = ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, 1),
             
-            case Pid =< 1 of
+            case UseCount =< 1 of
                 true -> 
-                    UseCount;
+                    Pid;
                 false ->
                     {full, Pid}
             end
