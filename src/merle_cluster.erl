@@ -57,8 +57,6 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
 
                     log4erl:error("Merle connection fetch process received 'DOWN' message"),
 
-                    local_pg2:checkin_pid(MerleConn),
-
                     ok;
 
                 done -> 
@@ -72,16 +70,19 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
             after 1000 ->
 
                 log4erl:error("Merle connection fetch process timed out")
-
+                
             end,
 
+            local_pg2:checkin_pid(MerleConn),
+
             true = erlang:demonitor(MonitorRef)
+            
         end
     ),
 
     ReturnValue = receive 
         {merle_watcher, in_use} ->
-            log4erl:error("Merle pool is full!"),
+            log4erl:info("Merle pool is full!"),
 
             ConnFetchPid ! done,
 
@@ -91,8 +92,6 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
             MC = merle_watcher:merle_connection(P),
             
             Value = Fun(MC, Key),
-
-            local_pg2:checkin_pid(P),
 
             ConnFetchPid ! done,
 
