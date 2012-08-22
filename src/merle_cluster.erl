@@ -88,8 +88,6 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
             FullDefault;
 
         {merle_watcher, P} ->
-            log4erl:error("Merle pool is full!"),
-
             MC = merle_watcher:merle_connection(P),
             
             Value = Fun(MC, Key),
