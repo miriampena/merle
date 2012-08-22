@@ -37,8 +37,6 @@ handle_call(_Call, _From, S) ->
     {reply, ok, S}.
     
 handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = State) ->
-    error_logger:info_report([{memcached, connecting}, {host, Host}, {port, Port}]),
-
     case merle:connect(Host, Port) of
         {ok, Pid} ->
 
@@ -64,11 +62,6 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
    end;
 	
 handle_info({'EXIT', Pid, Reason}, #state{mcd_pid = Pid} = S) ->
-    error_logger:error_report([{memcached_crashed, Pid},
-        {reason, Reason},
-        {host, S#state.host},
-        {port, S#state.port}]),
-    
     local_pg2:checkout_pid(self()),
     
     self() ! connect,

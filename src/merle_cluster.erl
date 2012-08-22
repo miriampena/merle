@@ -89,6 +89,8 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
             FullDefault;
 
         {merle_watcher, P} ->
+            log4erl:info("Merle found connection!"),
+
             MC = merle_watcher:merle_connection(P),
             
             Value = Fun(MC, Key),
@@ -100,7 +102,7 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
         after ConnectionTimeout ->
             log4erl:error("Merle timed out while trying to retrieve connection!"),
 
-            exit(ConnFetchPid, kill),
+            ConnFetchPid ! done,
 
             FullDefault
     end,
