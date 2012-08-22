@@ -469,7 +469,7 @@ handle_info({tcp_error, Socket, Reason}, Socket) ->
     {stop, {error, {tcp_error, Reason}}, Socket};
 
 handle_info({'EXIT', _, Reason}, Socket) ->
-    log4erl:error("Exiting merle connection ~p", [Reason]),
+    log4erl:warn("Exiting merle connection ~p", [Reason]),
     {stop, normal, Socket};
 
 handle_info(_Info, State) -> {noreply, State}.
@@ -515,7 +515,7 @@ send_get_cmd(Socket, Cmd, Timeout) ->
 		[{_, Value}] -> {ok, Value};
 		[] -> {error, not_found};
 		{error, Error} -> 
-            log4erl:error("Encountered error from memcache; killing connection now: ~p", [Error]),
+            log4erl:warn("Encountered error from memcache; killing connection now: ~p", [Error]),
             erlang:exit(self(), Error),
             {error, Error}
     	end,
@@ -567,11 +567,11 @@ recv_simple_reply(Timeout) ->
         	inet:setopts(Socket, ?TCP_OPTS_ACTIVE),
         	parse_simple_response_line(Data); 
         {error, closed} ->
-            log4erl:error("Encountered error while receiving simple reply from memcache; killing connection now."),
+            log4erl:warn("Encountered error while receiving simple reply from memcache; killing connection now."),
             erlang:exit(self(), connection_closed),
   			connection_closed
     after Timeout -> 
-        log4erl:error("Encountered timeout while receiving simple reply from memcache; killing connection now."),
+        log4erl:warn("Encountered timeout while receiving simple reply from memcache; killing connection now."),
         erlang:exit(self(), timeout),
         {error, timeout}
     end.

@@ -55,7 +55,12 @@ handle_call({monitor, MonitorPid}, _From, State = #state{monitor = PrevMonitor})
    {reply, ok, State#state{monitor = Monitor}};
 
 handle_call(demonitor, _From, State = #state{monitor = PrevMonitor}) ->
-    true = erlang:demonitor(PrevMonitor),
+    case PrevMonitor of
+        undefined -> ok;
+        _ ->
+            true = erlang:demonitor(PrevMonitor)
+    end,
+
     {reply, ok, State#state{monitor = undefined}};
 
 handle_call(_Call, _From, S) ->
