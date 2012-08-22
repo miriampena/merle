@@ -1,7 +1,7 @@
 -module(local_pg2).
 
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
--export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, release_pid/1, which_groups/0]).
+-export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, checkout_pid/1, checkin_pid/1, which_groups/0]).
 
 -export([start/0, start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -35,6 +35,7 @@ join(Name, Pid) when is_pid(Pid) ->
         _ ->
             gen_server:call(?MODULE, {join, Name, Pid})
     end.
+    
 leave(Name, Pid) when is_pid(Pid) ->
     ensure_started(),
     case ets:lookup(?TABLE, Name) of
@@ -53,7 +54,6 @@ get_members(Name) ->
 which_groups() ->
     ensure_started(),
     [K || {K, _Members} <- ets:tab2list(?TABLE)].
-
     
 get_closest_pid(random, Name) ->
     ensure_started(),
@@ -65,7 +65,10 @@ get_closest_pid(random, Name) ->
             %% TODO:  we can get more inteligent, check queue size, reductions, etc.
             %% http://lethain.com/entry/2009/sep/12/load-balancing-across-erlang-process-groups/
             {_, _, X} = erlang:now(),
-            lists:nth((X rem length(Members)) +1, Members)
+
+            Pid = lists:nth((X rem length(Members)) +1, Members),
+
+            checkout_pid(Pid, true)
     end;
 
 get_closest_pid(round_robin, Name) ->
@@ -78,18 +81,29 @@ get_closest_pid(round_robin, Name) ->
         [{Name, Members}] ->            
             Pid = lists:nth((RoundRobinIndex rem length(Members)) + 1, Members),
             
-            UseCount = ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, 1),
-            
-            case UseCount =< 1 of
-                true -> 
-                    Pid;
-                false ->
-                    {full, Pid}
-            end
-                    
+            checkout_pid(Pid, true)
     end.
     
-release_pid(Pid) ->
+checkout_pid(Pid) ->
+    checkout_pid(Pid, false).
+    
+checkout_pid(Pid, CheckBackIn) ->
+    UseCount = ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, 1),
+    
+    case UseCount =< 1 of
+        true -> Pid;
+        false ->
+            
+            if 
+                CheckBackIn -> checkin_pid(Pid);
+                true -> ok
+            end,
+
+            in_use
+    end.
+        
+checkin_pid(in_use) -> ok;
+checkin_pid(Pid) ->
     case is_process_alive(Pid) of
         true ->
             ets:update_counter(?INDEXES_TABLE, {Pid, use_count}, -1);
