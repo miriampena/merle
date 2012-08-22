@@ -1,13 +1,17 @@
 -module(merle_watcher).
 
 -export([start_link/1, init/1, handle_call/3, handle_info/2, handle_cast/2, terminate/2]).
--export([merle_connection/1]).
+
+-export([merle_connection/1, monitor/2, demonitor/1]).
 
 -define(RESTART_INTERVAL, 5000). %% retry each 5 seconds. 
 
--record(state, {mcd_pid, 
-                host,
-                port}).
+-record(state, {
+    mcd_pid, 
+    host,
+    port,
+    monitor
+}).
 
 start_link([Host, Port]) ->
     gen_server:start_link(?MODULE, [Host, Port], []).
@@ -28,10 +32,31 @@ init([Host, Port]) ->
    {ok, #state{mcd_pid = undefined, host = Host, port = Port}}.
 
 merle_connection(Pid) ->
-   gen_server:call(Pid, mcd_pid).
+    gen_server:call(Pid, mcd_pid).
+
+monitor(Pid, OwnerPid) ->
+    gen_server:call(Pid, {mark_owner, OwnerPid}).
+
+demonitor(Pid) ->
+    gen_server:call(Pid, demonitor).
 
 handle_call(mcd_pid, _From, State = #state{mcd_pid = McdPid}) ->
    {reply, McdPid, State};
+
+handle_call({monitor, MonitorPid}, _From, State = #state{monitor = PrevMonitor}) ->
+   case PrevMonitor of
+       undefined -> ok;
+       _ ->
+           true = erlang:demonitor(PrevMonitor)
+   end,
+    
+   Monitor = erlang:monitor(process, MonitorPid),
+
+   {reply, ok, State#state{monitor = Monitor}};
+
+handle_call(demonitor, _From, State = #state{monitor = PrevMonitor}) ->
+    true = erlang:demonitor(PrevMonitor),
+    {reply, ok, State#state{monitor = undefined}};
 
 handle_call(_Call, _From, S) ->
     {reply, ok, S}.
@@ -60,6 +85,15 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
 	        
             {noreply, State, ?RESTART_INTERVAL}
    end;
+
+handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
+    log4erl:info("merle_watcher caught a DOWN event"),
+    
+    local_pg2:checkin_pid(self()),
+    
+    true = erlang:demonitor(MonitorRef),
+
+    {noreply, S#state{monitor = undefined}};
 	
 handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
     local_pg2:checkout_pid(self()),
@@ -71,12 +105,7 @@ handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
 handle_info(_Info, S) ->
     error_logger:warning_report([{merle_watcher, self()}, {unknown_info, _Info}]),
 
-    case S#state.mcd_pid of
-    	undefined ->
-    	    {noreply, S, ?RESTART_INTERVAL};
-    	_ ->
-    	    {noreply, S}
-    end.
+    {noreply, S}.
     
 handle_cast(_Cast, S) ->
     {noreply, S}.

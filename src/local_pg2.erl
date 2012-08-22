@@ -113,8 +113,8 @@ checkin_pid(Pid) ->
 
 init([]) ->
     process_flag(trap_exit, true),
-    ets:new(?TABLE, [set, public, named_table]),
-    ets:new(?INDEXES_TABLE, [set, public, named_table]),
+    ets:new(?TABLE, [set, public, named_table, {read_concurrency, true}]),
+    ets:new(?INDEXES_TABLE, [set, public, named_table, {write_concurrency, true}]),
     {ok, []}.
 
 handle_call({create, Name}, _From, S) ->
