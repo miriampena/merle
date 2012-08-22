@@ -469,7 +469,8 @@ handle_info({tcp_error, Socket, Reason}, Socket) ->
     {stop, {error, {tcp_error, Reason}}, Socket};
 
 handle_info({'EXIT', _, Reason}, Socket) ->
-    {stop, {error, Reason}, Socket};
+    log4erl:error("Exiting merle connection ~p", [Reason]),
+    {stop, normal, Socket};
 
 handle_info(_Info, State) -> {noreply, State}.
 

@@ -55,7 +55,7 @@ exec(Key, Fun, FullDefault, ConnectionTimeout) ->
             receive
                 {'DOWN', MonitorRef, _, _, _} -> 
 
-                    log4erl:error("Merle connection fetch process received 'DOWN' message"),
+                    log4erl:info("Merle connection fetch process received 'DOWN' message"),
 
                     ok;
 
