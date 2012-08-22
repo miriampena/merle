@@ -61,7 +61,7 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
             {noreply, State, ?RESTART_INTERVAL}
    end;
 	
-handle_info({'EXIT', Pid, Reason}, #state{mcd_pid = Pid} = S) ->
+handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
     local_pg2:checkout_pid(self()),
     
     self() ! connect,

@@ -327,6 +327,9 @@ start_link(Host, Port) ->
 %% @private
 init([Host, Port]) ->
     log4erl:info("Socket initialized!"),
+
+    erlang:process_flag(trap_exit, true),
+
     gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE).
 
 handle_call({stats}, _From, Socket) ->
@@ -464,6 +467,10 @@ handle_info({tcp_closed, Socket}, Socket) ->
     {stop, {error, tcp_closed}, Socket};
 handle_info({tcp_error, Socket, Reason}, Socket) -> 
     {stop, {error, {tcp_error, Reason}}, Socket};
+
+handle_info({'EXIT', _, Reason}, Socket) ->
+    {stop, {error, Reason}, Socket};
+
 handle_info(_Info, State) -> {noreply, State}.
 
 %% @private
@@ -508,7 +515,7 @@ send_get_cmd(Socket, Cmd, Timeout) ->
 		[] -> {error, not_found};
 		{error, Error} -> 
             log4erl:error("Encountered error from memcache; killing connection now: ~p", [Error]),
-            erlang:exit(Error),
+            erlang:exit(self(), Error),
             {error, Error}
     	end,
     inet:setopts(Socket, ?TCP_OPTS_ACTIVE),
@@ -560,11 +567,11 @@ recv_simple_reply(Timeout) ->
         	parse_simple_response_line(Data); 
         {error, closed} ->
             log4erl:error("Encountered error while receiving simple reply from memcache; killing connection now."),
-            erlang:exit(connection_closed),
+            erlang:exit(self(), connection_closed),
   			connection_closed
     after Timeout -> 
         log4erl:error("Encountered timeout while receiving simple reply from memcache; killing connection now."),
-        erlang:exit(timeout),
+        erlang:exit(self(), timeout),
         {error, timeout}
     end.
 parse_simple_response_line(<<"OK", _B/binary>>) -> ok;
