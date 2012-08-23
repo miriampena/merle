@@ -22,10 +22,11 @@ init([Host, Port]) ->
 
    SelfPid = self(),
 
-   local_pg2:create({Host, Port}),
-   local_pg2:join({Host, Port}, SelfPid),
+   merle_pool:create({Host, Port}),
 
-   local_pg2:checkout_pid(SelfPid),
+   merle_pool:join({Host, Port}, SelfPid),
+
+   merle_pool:checkout_pid(SelfPid),
 
    SelfPid ! connect,   
    
@@ -70,7 +71,7 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
     case merle:connect(Host, Port) of
         {ok, Pid} ->
 
-            local_pg2:checkin_pid(self()),
+            merle_pool:checkin_pid(self()),
 
             {noreply, State#state{mcd_pid = Pid}};
 
@@ -94,14 +95,14 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
 handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
     log4erl:info("merle_watcher caught a DOWN event"),
     
-    local_pg2:checkin_pid(self()),
+    merle_pool:checkin_pid(self()),
     
     true = erlang:demonitor(MonitorRef),
 
     {noreply, S#state{monitor = undefined}};
 	
 handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
-    local_pg2:checkout_pid(self()),
+    merle_pool:checkout_pid(self()),
     
     self() ! connect,
     

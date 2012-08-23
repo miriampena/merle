@@ -558,7 +558,7 @@ do_recv_stats(Timeout) ->
             inet:setopts(Socket, ?TCP_OPTS_ACTIVE),  
             [{Field, Value} | do_recv_stats(Timeout)]
      after Timeout ->
-	timeout
+	     timeout
    end.
 %% @doc receive function for simple responses (not containing VALUEs)
 recv_simple_reply(Timeout) ->

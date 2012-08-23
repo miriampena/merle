@@ -26,11 +26,12 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
     {M, B} = dynamic_compile:from_string(ModuleString),
     code:load_binary(M, "", B),
 
+    % start all merle watchers
     lists:foreach(
         fun([Host, Port]) ->
             lists:foreach(
                 fun(_) -> 
-                    supervisor:start_child(merle_sup, [[Host, Port]]) 
+                    supervisor:start_child(merle_watcher_sup, [[Host, Port]]) 
                 end,
                 lists:seq(1, ConnectionsPerHost)
             )
@@ -42,7 +43,7 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
 exec(Key, Fun, FullDefault, _ConnectionTimeout) ->
     S = merle_cluster_dynamic:get_server(Key),
 
-    case local_pg2:get_closest_pid(round_robin, S) of
+    case merle_pool:get_closest_pid(round_robin, S) of
         in_use ->
             FullDefault;
 
@@ -55,78 +56,8 @@ exec(Key, Fun, FullDefault, _ConnectionTimeout) ->
 
             merle_watcher:demonitor(P),
 
-            local_pg2:checkin_pid(P),
+            merle_pool:checkin_pid(P),
 
             Value
 
     end.
-
-%exec(Key, Fun, FullDefault, ConnectionTimeout) ->
-%    S = merle_cluster_dynamic:get_server(Key),
-%
-%    FromPid = self(),
-%
-%    ConnFetchPid = spawn(
-%        fun() -> 
-%
-%            MerleConn = local_pg2:get_closest_pid(round_robin, S),
-%            MonitorRef = erlang:monitor(process, FromPid),
-%
-%            FromPid ! {merle_watcher, MerleConn},
-%
-%            receive
-%                {'DOWN', MonitorRef, _, _, _} -> 
-%
-%                    log4erl:info("Merle connection fetch process received 'DOWN' message"),
-%
-%                    ok;
-%
-%                done -> 
-%
-%                    ok;
-%
-%                Other -> 
-%
-%                    log4erl:error("Merle connection unexpected message ~p", [Other])
-%
-%            after 1000 ->
-%
-%                log4erl:error("Merle connection fetch process timed out")
-%                
-%            end,
-%
-%            local_pg2:checkin_pid(MerleConn),
-%
-%            true = erlang:demonitor(MonitorRef)
-%            
-%        end
-%    ),
-%
-%    ReturnValue = receive 
-%        {merle_watcher, in_use} ->
-%            log4erl:info("Merle pool is full!"),
-%
-%            ConnFetchPid ! done,
-%
-%            FullDefault;
-%
-%        {merle_watcher, P} ->
-%            log4erl:info("Merle found connection!"),
-%
-%            MC = merle_watcher:merle_connection(P),
-%            
-%            Value = Fun(MC, Key),
-%
-%            ConnFetchPid ! done,
-%
-%            Value
-%
-%        after ConnectionTimeout ->
-%            log4erl:error("Merle timed out while trying to retrieve connection!"),
-%
-%            ConnFetchPid ! done,
-%
-%            FullDefault
-%    end,
-%
-%    ReturnValue.
