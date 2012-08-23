@@ -40,7 +40,7 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
     ).
 
 
-exec(Key, Fun, FullDefault, _ConnectionTimeout) ->
+exec(Key, Fun, FullDefault, Now) ->
     S = merle_cluster_dynamic:get_server(Key),
 
     case merle_pool:get_closest_pid(round_robin, S) of
@@ -56,7 +56,7 @@ exec(Key, Fun, FullDefault, _ConnectionTimeout) ->
 
             merle_watcher:demonitor(P),
 
-            merle_pool:checkin_pid(P),
+            merle_pool:checkin_pid(P, Now),
 
             Value
 

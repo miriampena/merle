@@ -1,12 +1,12 @@
 -module(merle_pool).
 
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
--export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, checkout_pid/1, checkin_pid/1, which_groups/0]).
+-export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, checkout_pid/1, checkin_pid/1, checkin_pid/2, which_groups/0]).
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
 -define(PIDS_TABLE, merle_pool_pids).
--define(LOCKS_TABLE, merle_pool_counts).
+-define(LOCKS_TABLE, merle_pool_locks).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -75,29 +75,47 @@ get_closest_pid(round_robin, Name) ->
     
 checkout_pid(Pid) ->
     checkout_pid(Pid, false).
-    
+
 checkout_pid(Pid, CheckBackIn) ->
-    UseCount = ets:update_counter(?LOCKS_TABLE, {Pid, use_count}, 1),
+    UseCount = mark_used(Pid),
     
     case UseCount =< 1 of
         true -> Pid;
         false ->
             if 
-                CheckBackIn -> checkin_pid(Pid);
+                CheckBackIn -> mark_unused(Pid);
                 true -> ok
             end,
 
             in_use
     end.
+
+checkin_pid(Pid) -> 
+    {_, NowSecs, _} = erlang:now(),
+    checkin_pid(Pid, NowSecs).
         
-checkin_pid(in_use) -> ok;
-checkin_pid(Pid) ->
+checkin_pid(in_use, _NowSecs) -> ok;
+checkin_pid(Pid, NowSecs) ->
     case is_process_alive(Pid) of
         true ->
-            ets:update_counter(?LOCKS_TABLE, {Pid, use_count}, -1);
+            UseCount = mark_unused(Pid),
+            
+            case UseCount =:= 0 of
+                true -> 
+                    ets:insert(?LOCKS_TABLE, {{Pid, last_unlocked}, trunc(NowSecs)});
+                false ->
+                    ok
+            end;
+            
         false ->
             no_proc
     end.
+    
+mark_used(Pid) ->
+    ets:update_counter(?LOCKS_TABLE, {Pid, use_count}, 1).
+    
+mark_unused(Pid) ->
+    ets:update_counter(?LOCKS_TABLE, {Pid, use_count}, -1).
 
 init([]) ->
     process_flag(trap_exit, true),
@@ -126,6 +144,10 @@ handle_call({join, Name, Pid}, _From, S) ->
 
             % create an entry that will represent a lock for this pid
             ets:insert(?LOCKS_TABLE, {{Pid, use_count}, 0}),
+
+            % create an entry that will represent the last unlock time for this pid
+            {_, NowSecs, _} = erlang:now(),
+            ets:insert(?LOCKS_TABLE, {{Pid, last_unlocked}, NowSecs}),
 
             % insert new pid into the table
             ets:insert(?PIDS_TABLE, {Name, [Pid | Members]}),
