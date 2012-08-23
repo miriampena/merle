@@ -1,7 +1,11 @@
 -module(merle_pool).
 
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
--export([create/1, delete/1, join/2, leave/2, get_members/1, get_closest_pid/2, checkout_pid/1, checkin_pid/1, checkin_pid/2, which_groups/0]).
+-export([create/1, delete/1, join/2, leave/2, 
+    get_members/1, count_available/1, 
+    get_closest_pid/2, checkout_pid/1, 
+    checkin_pid/1, checkin_pid/2, 
+    which_groups/0]).
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
@@ -42,9 +46,32 @@ get_members(Name) ->
     case ets:lookup(?PIDS_TABLE, Name) of
         [] -> {error, {no_such_group, Name}};
         [{Name, Members}] -> Members
-     end.
+    end.
+
 which_groups() ->
     [K || {K, _Members} <- ets:tab2list(?PIDS_TABLE)].
+
+count_available(Name) ->
+    case ets:lookup(?PIDS_TABLE, Name) of
+
+        [] -> {error, {no_such_group, Name}};
+
+        [{Name, Members}] -> 
+            NumAvail = lists:foldl(
+                fun(Member, Acc) -> 
+                    case ets:lookup(?LOCKS_TABLE, Member) of
+                        [{_, 0}] -> 
+                            Acc + 1;
+                        _ ->
+                            Acc
+                    end
+                end, 
+                0, 
+                Members
+            ),
+            
+            {length(Members), NumAvail}
+    end.    
     
 get_closest_pid(random, Name) ->    
     case ets:lookup(?PIDS_TABLE, Name) of
