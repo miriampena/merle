@@ -36,7 +36,7 @@ merle_connection(Pid) ->
     gen_server:call(Pid, mcd_pid).
 
 monitor(Pid, OwnerPid) ->
-    gen_server:call(Pid, {mark_owner, OwnerPid}).
+    gen_server:call(Pid, {monitor, OwnerPid}).
 
 demonitor(Pid) ->
     gen_server:call(Pid, demonitor).

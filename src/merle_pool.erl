@@ -132,7 +132,9 @@ checkin_pid(Pid, NowSecs) ->
                     ets:insert(?LOCKS_TABLE, {{Pid, last_unlocked}, trunc(NowSecs)});
                 false ->
                     ok
-            end;
+            end,
+            
+            UseCount;
             
         false ->
             no_proc
