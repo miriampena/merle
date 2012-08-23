@@ -59,8 +59,8 @@ count_available(Name) ->
         [{Name, Members}] -> 
             NumAvail = lists:foldl(
                 fun(Member, Acc) -> 
-                    case ets:lookup(?LOCKS_TABLE, Member) of
-                        [{_, 0}] -> 
+                    case ets:lookup(?LOCKS_TABLE, {Member, use_count}) of
+                        [{{Member, use_count}, 0}] -> 
                             Acc + 1;
                         _ ->
                             Acc
