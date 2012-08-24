@@ -82,7 +82,7 @@ count_available(Name) ->
 clean_locks() ->
     L = ets:tab2list(?PIDS_TABLE),
 
-    TotalCleaned = lists:foldl(fun(Pids, Acc) -> Acc + clean_locks(Pids) end, 0, L),
+    TotalCleaned = lists:foldl(fun({_, Pids}, Acc) -> Acc + clean_locks(Pids) end, 0, L),
     
     log4erl:error("Cleaned ~p merle locks", [TotalCleaned]),
     
