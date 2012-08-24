@@ -40,19 +40,28 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
     ).
 
 
-exec(Key, Fun, FullDefault, Now) ->
+exec(Key, Fun, Default, Now) ->
     S = merle_cluster_dynamic:get_server(Key),
 
     case merle_pool:get_closest_pid(round_robin, S) of
         in_use ->
-            FullDefault;
+            Default;
 
         P ->
             merle_watcher:monitor(P, self()),
             
             MC = merle_watcher:merle_connection(P),
 
-            Value = Fun(MC, Key),
+            Value = case MC of
+                uninitialized ->
+                    log4erl:error("Merle watcher has uninitialized connection, shouldn't happen."),
+                    Default;
+                undefined ->
+                    log4erl:error("Merle watcher has undefined connection, shouldn't happen."),
+                    Default;
+                _ ->
+                    Fun(MC, Key)
+            end,
 
             merle_watcher:demonitor(P),
 

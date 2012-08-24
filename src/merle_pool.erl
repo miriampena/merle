@@ -238,7 +238,12 @@ handle_call({join, Name, Pid}, _From, S) ->
 
             % create an entry that will represent a lock for this pid
             NowSecs = now_secs(),
-            reset_lock(Pid, NowSecs),
+
+            % create an entry that will represent a lock for this pid
+            ets:insert(?LOCKS_TABLE, {{Pid, use_count}, 1}),
+
+            % create an entry that will represent the last unlock time for this pid
+            ets:insert(?LOCKS_TABLE, {{Pid, last_unlocked}, NowSecs}),
 
             % insert new pid into the table
             ets:insert(?PIDS_TABLE, {Name, [Pid | Members]}),

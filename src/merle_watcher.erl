@@ -7,7 +7,7 @@
 -define(RESTART_INTERVAL, 5000). %% retry each 5 seconds. 
 
 -record(state, {
-    mcd_pid, 
+    mcd_pid = uninitialized, 
     host,
     port,
     monitor
@@ -26,11 +26,9 @@ init([Host, Port]) ->
 
    merle_pool:join({Host, Port}, SelfPid),
 
-   merle_pool:checkout_pid(SelfPid),
-
-   SelfPid ! connect,   
+   SelfPid ! timeout,   
    
-   {ok, #state{mcd_pid = undefined, host = Host, port = Port}}.
+   {ok, #state{host = Host, port = Port}}.
 
 merle_connection(Pid) ->
     gen_server:call(Pid, mcd_pid).
@@ -67,7 +65,11 @@ handle_call(demonitor, _From, State = #state{monitor = PrevMonitor}) ->
 handle_call(_Call, _From, S) ->
     {reply, ok, S}.
     
-handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = State) ->
+handle_info('timeout', #state{mcd_pid = uninitialized} = State) ->
+    handle_info('connect', State);
+handle_info('timeout', #state{mcd_pid = undefined} = State) ->
+    handle_info('connect', State);
+handle_info('connect', #state{host = Host, port = Port} = State) ->
     case merle:connect(Host, Port) of
         {ok, Pid} ->
 
@@ -76,11 +78,6 @@ handle_info('connect', #state{mcd_pid = undefined, host = Host, port = Port} = S
             {noreply, State#state{mcd_pid = Pid}};
 
         {error, Reason} ->
-    	    receive 
-    		    {'EXIT', _ , _} -> ok
-    		after 2000 ->
-    			ok
-    	    end,
 
 	        error_logger:error_report([memcached_not_started, 
 	            {reason, Reason},
@@ -104,7 +101,7 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
 handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
     merle_pool:checkout_pid(self()),
     
-    self() ! connect,
+    self() ! timeout,
     
     {noreply, S#state{mcd_pid = undefined}, ?RESTART_INTERVAL};
     
