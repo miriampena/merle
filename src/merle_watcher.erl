@@ -86,7 +86,9 @@ handle_info('connect', #state{host = Host, port = Port} = State) ->
 	            {restarting_in, ?RESTART_INTERVAL}]
 	        ),
 	        
-            {noreply, State, ?RESTART_INTERVAL}
+	        timer:send_after(?RESTART_INTERVAL, self(), timeout),
+	        
+            {noreply, State}
    end;
 
 handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
@@ -99,7 +101,7 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
     {noreply, S#state{monitor = undefined}};
 	
 handle_info({'EXIT', Pid, _}, #state{mcd_pid = Pid} = S) ->
-    merle_pool:checkout_pid(self()),
+    merle_pool:checkout_indefinitely(self()),
     
     self() ! timeout,
     

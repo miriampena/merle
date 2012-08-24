@@ -3,7 +3,8 @@
 %% Basically the same functionality than pg2,  but process groups are local rather than global.
 -export([create/1, delete/1, join/2, leave/2, 
     get_members/1, count_available/1, clean_locks/0,
-    get_closest_pid/2, checkout_pid/1, 
+    get_closest_pid/2, 
+    checkout_indefinitely/1, 
     checkin_pid/1, checkin_pid/2, 
     which_groups/0]).
 
@@ -82,39 +83,58 @@ count_available(Name) ->
 clean_locks() ->
     L = ets:tab2list(?PIDS_TABLE),
 
-    TotalCleaned = lists:foldl(fun({_, Pids}, Acc) -> Acc + clean_locks(Pids) end, 0, L),
+    {Cleaned, Connections} = lists:foldl(
+        fun({_, Pids}, {C, V}) -> 
+            {C2, V2} = clean_locks(Pids),
+            {C + C2, V + V2}
+        end, 
+        {0, 0}, 
+        L
+    ),
     
-    log4erl:error("Cleaned ~p merle locks", [TotalCleaned]),
+    log4erl:error("Cleaned ~p merle locks on ~p valid connections", [Cleaned, Connections]),
     
-    TotalCleaned.
+    {Cleaned, Connections}.
 
 clean_locks(PoolPids) ->
     NowSecs = now_secs(),
     CleanLocksIntervalSecs = ?CLEAN_LOCKS_INTERVAL div 1000,
 
-    NumCleaned = lists:foldl(
-        fun(Pid, Acc) -> 
-            case ets:lookup(?LOCKS_TABLE, {Pid, use_count}) of
+    Acc = lists:foldl(
+        fun(Pid, Acc = {NumCleaned, ValidConnections}) -> 
+                        
+            % clear locks with stale last_unlocked time 
+            NumCleaned2 = case ets:lookup(?LOCKS_TABLE, {Pid, use_count}) of
                 [{{Pid, use_count}, 0}] ->
-                    Acc;
+                    NumCleaned;
                 _ ->
                     case ets:lookup(?LOCKS_TABLE, {Pid, last_unlocked}) of
                         [{{Pid, last_unlocked}, LastUnlocked}] -> 
                             case (LastUnlocked + CleanLocksIntervalSecs) < NowSecs of
                                 true -> 
                                     reset_lock(Pid, NowSecs),
-                                    Acc + 1;
-                                false -> Acc
+                                    NumCleaned + 1;
+                                false -> NumCleaned
                             end;
-                        _ -> Acc
+                        _ -> NumCleaned
                     end
-            end
+            end,
+            
+            % maintain a count of the number of valid connections
+            ValidConnections2 = case merle_watcher:merle_connection(Pid) of
+                uninitialized -> ValidConnections;
+                undefined -> ValidConnections;
+                _ -> ValidConnections + 1
+            end,           
+            
+            {NumCleaned2, ValidConnections2}
+
         end, 
-        0, 
+        {0, 0}, 
         PoolPids
     ),
     
-    NumCleaned.
+    Acc.
     
 shift_rr_index(Name, MembersLen) ->
     ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, {2, 1, MembersLen, 1}).
@@ -149,9 +169,6 @@ get_closest_pid(round_robin, Name) ->
             checkout_pid(Pid, true)
     end.
     
-checkout_pid(Pid) ->
-    checkout_pid(Pid, false).
-
 checkout_pid(Pid, CheckBackIn) ->
     UseCount = mark_used(Pid),
     
@@ -165,6 +182,11 @@ checkout_pid(Pid, CheckBackIn) ->
 
             in_use
     end.
+
+% Checks out the specified Pid, clears its unlock time so that its lock is never cleaned
+checkout_indefinitely(Pid) ->
+    checkout_pid(Pid, false),
+    ets:delete(?LOCKS_TABLE, {Pid, last_unlocked}).
 
 checkin_pid(Pid) -> 
     NowSecs = now_secs(),
