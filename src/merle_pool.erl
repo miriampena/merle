@@ -116,6 +116,9 @@ clean_locks(PoolPids) ->
     
     NumCleaned.
     
+shift_rr_index(Name, MembersLen) ->
+    ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, {2, 1, MembersLen, 1}).
+    
 get_closest_pid(random, Name) ->    
     case ets:lookup(?PIDS_TABLE, Name) of
         [] ->
@@ -139,7 +142,7 @@ get_closest_pid(round_robin, Name) ->
             MembersLen = length(Members),
         
             % Get the round robin index        
-            RRIndex = ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, {2, 1, MembersLen, 1}),
+            RRIndex = shift_rr_index(Name, MembersLen),
 
             Pid = lists:nth(RRIndex, Members),
             
@@ -217,7 +220,7 @@ init([]) ->
 handle_call({create, Name}, _From, S) ->
     case ets:lookup(?PIDS_TABLE, Name) of
         [] ->
-            ets:insert(?LOCKS_TABLE, {{Name, rr_index}, 0}),
+            ets:insert(?LOCKS_TABLE, {{Name, rr_index}, 1}),
             ets:insert(?PIDS_TABLE, {Name, []});
         _ ->
             ok
@@ -231,7 +234,7 @@ handle_call({join, Name, Pid}, _From, S) ->
         [{Name, Members}] ->
 
             % NOTE: skip one index since we are about to grow the list, this prevents collisions
-            ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, 1),
+            shift_rr_index(Name, length(Members)),
 
             % create an entry that will represent a lock for this pid
             NowSecs = now_secs(),
