@@ -230,7 +230,7 @@ handle_call({join, Name, Pid}, _From, S) ->
             ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, 1),
 
             % create an entry that will represent a lock for this pid
-            {_, NowSecs, _} = erlang:now(),
+            NowSecs = now_secs(),
             reset_lock(Pid, NowSecs),
 
             % insert new pid into the table
