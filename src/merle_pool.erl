@@ -89,7 +89,7 @@ clean_locks() ->
     TotalCleaned.
 
 clean_locks(PoolPids) ->
-    {_, NowSecs, _} = erlang:now(),
+    NowSecs = now_secs(),
 
     NumCleaned = lists:foldl(
         fun(Pid, Acc) -> 
@@ -160,7 +160,7 @@ checkout_pid(Pid, CheckBackIn) ->
     end.
 
 checkin_pid(Pid) -> 
-    {_, NowSecs, _} = erlang:now(),
+    NowSecs = now_secs(),
     checkin_pid(Pid, NowSecs).
         
 checkin_pid(in_use, _NowSecs) -> ok;
@@ -284,6 +284,10 @@ terminate(_Reason, #server_state{ periodic_lock_clean=PLC }) ->
 %%%-----------------------------------------------------------------
 %%% Internal functions
 %%%-----------------------------------------------------------------
+now_secs() ->
+    {NowMegaSecs, NowSecs, _} = erlang:now(),
+    (1.0e+6 * NowMegaSecs) + NowSecs.
+
 del_member(Pid) ->
     L = ets:tab2list(?PIDS_TABLE),
     lists:foreach(fun(Elem) -> del_member_func(Elem, Pid) end, L).
