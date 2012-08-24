@@ -130,15 +130,18 @@ get_closest_pid(random, Name) ->
             checkout_pid(Pid, true)
     end;
 
-get_closest_pid(round_robin, Name) ->
-    % Get the round robin index
-    RoundRobinIndex = ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, 1),
-    
+get_closest_pid(round_robin, Name) ->    
     case ets:lookup(?PIDS_TABLE, Name) of
         [] ->
             {error, {no_process, Name}};
-        [{Name, Members}] ->            
-            Pid = lists:nth((RoundRobinIndex rem length(Members)) + 1, Members),
+        [{Name, Members}] ->           
+         
+            MembersLen = length(Members),
+        
+            % Get the round robin index        
+            RRIndex = ets:update_counter(?LOCKS_TABLE, {Name, rr_index}, {2, 1, MembersLen, 1}),
+
+            Pid = lists:nth(RRIndex, Members),
             
             checkout_pid(Pid, true)
     end.
