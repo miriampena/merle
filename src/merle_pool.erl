@@ -90,6 +90,7 @@ clean_locks() ->
 
 clean_locks(PoolPids) ->
     NowSecs = now_secs(),
+    CleanLocksIntervalSecs = ?CLEAN_LOCKS_INTERVAL div 1000,
 
     NumCleaned = lists:foldl(
         fun(Pid, Acc) -> 
@@ -99,7 +100,7 @@ clean_locks(PoolPids) ->
                 _ ->
                     case ets:lookup(?LOCKS_TABLE, {Pid, last_unlocked}) of
                         [{{Pid, last_unlocked}, LastUnlocked}] -> 
-                            case (LastUnlocked + ?CLEAN_LOCKS_INTERVAL) < NowSecs of
+                            case (LastUnlocked + CleanLocksIntervalSecs) < NowSecs of
                                 true -> 
                                     reset_lock(Pid, NowSecs),
                                     Acc + 1;
