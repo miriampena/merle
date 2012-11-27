@@ -79,12 +79,13 @@ handle_info('connect', #state{host = Host, port = Port} = State) ->
 
         {error, Reason} ->
 
-	        error_logger:error_report([memcached_not_started, 
-	            {reason, Reason},
-	            {host, Host},
-	            {port, Port},
-	            {restarting_in, ?RESTART_INTERVAL}]
-	        ),
+            % This logging is overly noisy on server start.
+	        % error_logger:error_report([memcached_not_started, 
+	        %     {reason, Reason},
+	        %     {host, Host},
+	        %     {port, Port},
+	        %     {restarting_in, ?RESTART_INTERVAL}]
+	        % ),
 	        
 	        timer:send_after(?RESTART_INTERVAL, self(), timeout),
 	        
