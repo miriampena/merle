@@ -53,11 +53,8 @@ exec(Key, Fun, Default, Now) ->
             MC = merle_watcher:merle_connection(P),
 
             Value = case MC of
-                uninitialized ->
-                    log4erl:error("Merle watcher has uninitialized connection, shouldn't happen."),
-                    Default;
                 undefined ->
-                    log4erl:error("Merle watcher has undefined connection, shouldn't happen."),
+                    log4erl:error("Merle watcher has undefined connection, should initialize connection now."),
                     Default;
                 _ ->
                     Fun(MC, Key)
