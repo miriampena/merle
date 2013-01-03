@@ -31,7 +31,7 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
         fun([Host, Port]) ->
             lists:foreach(
                 fun(_) -> 
-                    supervisor:start_child(merle_watcher_sup, [[Host, Port]]) 
+                    merle_client_sup:start_child([Host, Port])
                 end,
                 lists:seq(1, ConnectionsPerHost)
             )
@@ -42,28 +42,33 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
 
 exec(Key, Fun, Default, Now) ->
     S = merle_cluster_dynamic:get_server(Key),
+    exec_on_client(
+        merle_pool:get_client(round_robin, S, self()),
+        Key,
+        Fun,
+        Default,
+        Now
+    ).
 
-    case merle_pool:get_closest_pid(round_robin, S) of
-        in_use ->
-            Default;
 
-        P ->
-            merle_watcher:monitor(P, self()),
-            
-            MC = merle_watcher:merle_connection(P),
+exec_on_client({error, Error}, _Key, _Fun, Default, _Now) ->
+    log4erl:error("Error finding merle client: ~r~n, returning default value", [Error]),
+    Default;
+exec_on_client(undefined, _Key, _Fun, Default, _Now) ->
+    log4erl:error("Undefined merle client, returning default value"),
+    Default;
+exec_on_client(Client, Key, Fun, Default, Now) ->
+    exec_on_socket(merle_client:checkout(Client, self(), Now), Client, Key, Fun, Default).
 
-            Value = case MC of
-                undefined ->
-                    log4erl:error("Merle watcher has undefined connection, should initialize connection now."),
-                    Default;
-                _ ->
-                    Fun(MC, Key)
-            end,
 
-            merle_watcher:demonitor(P),
+exec_on_socket(no_socket, _Client, _Key, _Fun, Default) ->
+    log4erl:error("Designated merle connection has no socket, returning default value"),
+    Default;
+exec_on_socket(busy, _Client, _Key, _Fun, Default) ->
+    log4erl:error("Designated merle connection is in use, returning default value"),
+    Default;
+exec_on_socket(Socket, Client, Key, Fun, _Default) ->
+    Value = Fun(Socket, Key),
+    merle_client:checkin(Client),
+    Value.
 
-            merle_pool:checkin_pid(P, Now),
-
-            Value
-
-    end.

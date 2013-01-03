@@ -15,8 +15,8 @@ init([Instances, ConnectionsPerInstance]) ->
         },
 
     MerleWatcherSup = 
-        {merle_watcher_sup, 
-            {merle_watcher_sup, start_link, [Instances, ConnectionsPerInstance]},
+        {merle_client_sup,
+            {merle_client_sup, start_link, [Instances, ConnectionsPerInstance]},
             permanent, 5000, supervisor, dynamic
         },
 
