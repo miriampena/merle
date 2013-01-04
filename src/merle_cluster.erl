@@ -43,7 +43,7 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
 exec(Key, Fun, Default, Now) ->
     S = merle_cluster_dynamic:get_server(Key),
     exec_on_client(
-        merle_pool:get_client(round_robin, S, self()),
+        merle_pool:get_client(round_robin, S),
         Key,
         Fun,
         Default,

@@ -190,7 +190,7 @@ connect_socket(State = #state{}) ->
 
 
 check_out_state_indefinitely(State = #state{}) ->
-    check_out_state(State = #state{}, indefinite).
+    check_out_state(State, indefinite).
 
 
 check_out_state(State = #state{}, CheckOutTime) ->
