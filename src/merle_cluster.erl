@@ -54,7 +54,7 @@ exec(Key, Fun, Default, Now) ->
             
             MC = merle_watcher:merle_connection(P),
 
-            Value = case MC of
+            FinalValue = case MC of
                 uninitialized ->
                     log4erl:error("Merle watcher has uninitialized connection, shouldn't happen."),
                     {uninitialized_socket, Default};
@@ -82,6 +82,6 @@ exec(Key, Fun, Default, Now) ->
 
             merle_pool:checkin_pid(P, Now),
 
-            Value
+            FinalValue
 
     end.
