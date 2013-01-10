@@ -50,25 +50,32 @@ exec(Key, Fun, Default, Now) ->
         Now
     ).
 
-
 exec_on_client({error, Error}, _Key, _Fun, Default, _Now) ->
     log4erl:error("Error finding merle client: ~r~n, returning default value", [Error]),
-    Default;
+    {error_finding_client, Default};
 exec_on_client(undefined, _Key, _Fun, Default, _Now) ->
     log4erl:error("Undefined merle client, returning default value"),
-    Default;
+    {undefined_client, Default};
 exec_on_client(Client, Key, Fun, Default, Now) ->
     exec_on_socket(merle_client:checkout(Client, self(), Now), Client, Key, Fun, Default).
 
 
 exec_on_socket(no_socket, _Client, _Key, _Fun, Default) ->
     log4erl:error("Designated merle connection has no socket, returning default value"),
-    Default;
+    {no_socket, Default};
 exec_on_socket(busy, _Client, _Key, _Fun, Default) ->
     log4erl:error("Designated merle connection is in use, returning default value"),
-    Default;
-exec_on_socket(Socket, Client, Key, Fun, _Default) ->
-    Value = Fun(Socket, Key),
+    {in_use, Default};
+exec_on_socket(Socket, Client, Key, Fun, Default) ->
+    FinalValue = case Fun(Socket, Key) of
+        {error, Error} ->
+            log4erl:error("Merle encountered error, returning default value"),
+            {Error, Default};
+        {ok, Value} ->
+            {ok, Value}
+    end,
+
     merle_client:checkin(Client),
-    Value.
+
+    FinalValue.
 

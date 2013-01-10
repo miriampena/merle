@@ -121,8 +121,8 @@ getkeys(Ref, Keys, Timeout) when is_list(Keys) ->
 %% @doc used in conjunction with incr_counter to retrieve an integer value from cache
 getcounter(Ref, Key, Timeout) ->
     case getkey(Ref, Key, Timeout) of 
-        {error, _} -> undefined;
-        {ok, NumberBin} -> list_to_integer(string:strip(binary_to_list(NumberBin)))
+        {error, Error} -> {error, Error};
+        {ok, NumberBin} -> {ok, list_to_integer(string:strip(binary_to_list(NumberBin)))}
     end.
 
 %% @doc retrieve value based off of key for use with cas
@@ -254,7 +254,7 @@ incr_counter(Ref, Key, Value, ExpTime, Timeout) ->
     incr_counter(Ref, Key, Value, ExpTime, Timeout, 0).
 
 incr_counter(_Ref, _Key, _Value, _ExpTime, _Timeout, ?MAX_INCR_TRIES) -> 
-    not_stored;
+    {error, not_stored};
 incr_counter(Ref, Key, Value, ExpTime, Timeout, NumTry) -> 
     Flag = random:uniform(?RANDOM_MAX),
     case incr(Ref, Key, Value, Timeout) of
