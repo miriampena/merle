@@ -44,8 +44,10 @@ exec(Key, Fun, Default, Now) ->
     S = merle_cluster_dynamic:get_server(Key),
 
     case merle_pool:get_closest_pid(round_robin, S) of
+
         in_use ->
-            Default;
+            log4erl:error("Merle watcher has uninitialized connection, shouldn't happen."),
+            {in_use, Default};
 
         P ->
             merle_watcher:monitor(P, self()),
@@ -55,12 +57,25 @@ exec(Key, Fun, Default, Now) ->
             Value = case MC of
                 uninitialized ->
                     log4erl:error("Merle watcher has uninitialized connection, shouldn't happen."),
-                    Default;
+                    {uninitialized_socket, Default};
+
                 undefined ->
-                    log4erl:error("Merle watcher has undefined connection, shouldn't happen."),
-                    Default;
+                    log4erl:error("Merle watcher has undefined connection."),
+                    {no_socket, Default};
+
                 _ ->
-                    Fun(MC, Key)
+
+                    % dispatch to the passed function
+                    case Fun(MC, Key) of
+
+                        {error, Error} ->
+                            log4erl:error("Merle encountered error."),
+                            {Error, Default};
+
+                        {ok, Value} ->
+                            {ok, Value}
+
+                    end
             end,
 
             merle_watcher:demonitor(P),
