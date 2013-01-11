@@ -69,7 +69,7 @@ exec_on_socket(busy, _Client, _Key, _Fun, Default) ->
 exec_on_socket(Socket, Client, Key, Fun, Default) ->
     FinalValue = case Fun(Socket, Key) of
         {error, Error} ->
-            log4erl:error("Merle encountered error, returning default value"),
+            log4erl:info("Merle encountered error ~p, returning default value", [Error]),
             {Error, Default};
         {ok, Value} ->
             {ok, Value}
