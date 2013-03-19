@@ -148,7 +148,7 @@ handle_cast(_Cast, S) ->
     {noreply, S}.
 
 handle_info({'EXIT', Pid, Reason} , S) ->
-    io:format("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [Pid, Reason]),
+    io:format("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [[Pid, Reason]]),
     {noreply, S};
     
 handle_info(_Info, S) ->
