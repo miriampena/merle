@@ -9,8 +9,8 @@ index_map(F, List) ->
 configure(MemcachedHosts, ConnectionsPerHost) ->
     SortedMemcachedHosts = lists:sort(MemcachedHosts),
     DynModuleBegin = "-module(merle_cluster_dynamic).
-        -export([get_server/1]).
-        get_connections_per_host() -> ~p.\n
+        -export([get_connections_per_host/0, get_server/1]).
+        get_connections_per_host() -> ~p.
         get_server(ClusterKey) -> N = erlang:phash2(ClusterKey, ~p), 
             do_get_server(N).\n",
 
