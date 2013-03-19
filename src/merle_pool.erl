@@ -19,6 +19,8 @@
 }).
 
 start_link() ->
+    log4erl:error("Merle pool STARTING!"),
+
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 delete(Name) ->
@@ -153,6 +155,8 @@ handle_info(_Info, S) ->
     {noreply, S}.
 
 terminate(_Reason, #server_state{ periodic_lock_clean=PLC }) ->
+    log4erl:error("Merle pool TERMINATING!"),
+
     ets:delete(?PIDS_TABLE),
     ets:delete(?INDICES_TABLE),
 

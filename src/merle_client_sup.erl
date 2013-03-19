@@ -7,6 +7,8 @@
 -behaviour(supervisor).
 
 start_link(Instances, ConnectionsPerInstance) ->
+    log4erl:error("Merle client sup STARTING!"),
+
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
 
     merle_cluster:configure(Instances, ConnectionsPerInstance),

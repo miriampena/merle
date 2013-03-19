@@ -9,6 +9,7 @@
 -record(state, {
     host,
     port,
+    index,
 
     socket,                 % memcached connection socket
 
@@ -20,11 +21,13 @@
 
 
 start_link([Host, Port, Index]) ->
+    log4erl:error("Merle client ~p is STARTING", [[Host, Port, Index]]),
+
+    %TODO: get rid of registered process name
     gen_server:start_link({local, list_to_atom("merle_client_" ++ integer_to_list(Index))}, ?MODULE, [Host, Port, Index], []).
 
 
 init([Host, Port, Index]) ->
-    log4erl:info("Merle watcher initialized!"),
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
@@ -35,7 +38,8 @@ init([Host, Port, Index]) ->
         check_in_state(
             #state{
                 host = Host,
-                port = Port
+                port = Port,
+                index = Index
             }
         )
     }.
@@ -172,11 +176,11 @@ handle_cast(_Cast, S) ->
     
 
 terminate(_Reason, #state{socket = undefined}) ->
-    log4erl:error("Merle watcher terminated, socket is empty!"),
+    log4erl:error("Merle watcher TERMINATING, socket is empty!"),
     ok;
 
 terminate(_Reason, #state{socket = Socket}) ->
-    log4erl:error("Merle watcher terminated, killing socket!"),
+    log4erl:error("Merle watcher TERMINATING, killing socket!"),
     erlang:exit(Socket, watcher_died),
     ok.
 
