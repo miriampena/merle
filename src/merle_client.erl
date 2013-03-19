@@ -28,7 +28,7 @@ init([Host, Port, Index]) ->
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
-    merle_pool:join({Host, Port}, self(), Index),
+    merle_pool:join({Host, Port}, Index, self()),
 
     {
         ok,
