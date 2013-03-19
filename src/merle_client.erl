@@ -19,8 +19,8 @@
 }).
 
 
-start_link([Host, Port]) ->
-    gen_server:start_link(?MODULE, [Host, Port], []).
+start_link([Host, Port, Index]) ->
+    gen_server:start_link({local, list_to_atom("merle_client_" ++ integer_to_list(Index))}, ?MODULE, [Host, Port, Index], []).
 
 
 init([Host, Port, Index]) ->
