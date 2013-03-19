@@ -165,6 +165,9 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
+handle_info({'EXIT', _, Reason}, S) ->
+    log4erl:error("Caught an exit signal ~p", [Reason]),
+    {stop, Reason, S};
 
 handle_info(_Info, S) ->
     error_logger:warning_report([{merle_watcher, self()}, {unknown_info, _Info}]),
