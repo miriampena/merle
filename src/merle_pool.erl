@@ -28,12 +28,7 @@ create(Name) ->
     gen_server:call(?MODULE, {create, Name}).
 
 join(Name, Index, Pid) when is_pid(Pid) ->
-    case ets:lookup(?PIDS_TABLE, Name) of
-        [] ->
-            {error, {no_such_group, Name}};
-        _ ->
-            gen_server:call(?MODULE, {join, Name, Index, Pid})
-    end.
+    gen_server:call(?MODULE, {join, Name, Index, Pid}).
 
 clean_locks() ->
     NowSecs = now_secs(),
