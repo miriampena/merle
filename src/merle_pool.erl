@@ -100,7 +100,7 @@ get_client(round_robin, Name, NumConnections) ->
 %%
 
 init([]) ->
-    log4erl:error("Merle pool STARTING!"),
+    io:format("Merle pool STARTING!"),
 
     process_flag(trap_exit, true),
     ets:new(?PIDS_TABLE, [set, public, named_table, {read_concurrency, true}]),
@@ -148,14 +148,14 @@ handle_cast(_Cast, S) ->
     {noreply, S}.
 
 handle_info({'EXIT', Pid, Reason} , S) ->
-    log4erl:error("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [Pid, Reason]),
+    io:format("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [Pid, Reason]),
     {noreply, S};
     
 handle_info(_Info, S) ->
     {noreply, S}.
 
 terminate(_Reason, #server_state{ periodic_lock_clean=PLC }) ->
-    log4erl:error("Merle pool TERMINATING!"),
+    io:format("Merle pool TERMINATING!"),
 
     ets:delete(?PIDS_TABLE),
     ets:delete(?INDICES_TABLE),

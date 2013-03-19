@@ -26,7 +26,7 @@ start_link([Host, Port, Index]) ->
 
 
 init([Host, Port, Index]) ->
-    log4erl:error("Merle client ~p is STARTING", [[Host, Port, Index]]),
+    io:format("Merle client ~p is STARTING", [[Host, Port, Index]]),
 
     erlang:process_flag(trap_exit, true),
 
@@ -166,7 +166,7 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
 handle_info({'EXIT', _, Reason}, S) ->
-    log4erl:error("Caught an exit signal ~p", [Reason]),
+    io:format("Caught an exit signal ~p", [Reason]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
@@ -179,11 +179,11 @@ handle_cast(_Cast, S) ->
     
 
 terminate(_Reason, #state{socket = undefined}) ->
-    log4erl:error("Merle watcher TERMINATING, socket is empty!"),
+    io:format("Merle watcher TERMINATING, socket is empty!"),
     ok;
 
 terminate(_Reason, #state{socket = Socket}) ->
-    log4erl:error("Merle watcher TERMINATING, killing socket!"),
+    io:format("Merle watcher TERMINATING, killing socket!"),
     erlang:exit(Socket, watcher_died),
     ok.
 
