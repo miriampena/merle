@@ -23,12 +23,12 @@ start_link([Host, Port]) ->
     gen_server:start_link(?MODULE, [Host, Port], []).
 
 
-init([Host, Port]) ->
+init([Host, Port, Index]) ->
     log4erl:info("Merle watcher initialized!"),
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
-    merle_pool:join({Host, Port}, self()),
+    merle_pool:join({Host, Port}, self(), Index),
 
     {
         ok,

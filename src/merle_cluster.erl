@@ -10,13 +10,16 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
     SortedMemcachedHosts = lists:sort(MemcachedHosts),
     DynModuleBegin = "-module(merle_cluster_dynamic).
         -export([get_server/1]).
+        get_connections_per_server() -> ~p.\n
         get_server(ClusterKey) -> N = erlang:phash2(ClusterKey, ~p), 
             do_get_server(N).\n",
+
     DynModuleMap = "do_get_server(~p) -> {\"~s\", ~p}; ",
     DynModuleEnd = "do_get_server(_N) -> throw({invalid_server_slot, _N}).\n",
+
     
     ModuleString = lists:flatten([
-        io_lib:format(DynModuleBegin, [length(SortedMemcachedHosts)]),
+        io_lib:format(DynModuleBegin, [length(SortedMemcachedHosts), ConnectionsPerHost]),
         index_map(fun([Host, Port], I) -> io_lib:format(DynModuleMap, [I-1, Host, Port]) end, SortedMemcachedHosts),
         DynModuleEnd
     ]),
@@ -30,8 +33,8 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
     lists:foreach(
         fun([Host, Port]) ->
             lists:foreach(
-                fun(_) -> 
-                    merle_client_sup:start_child([Host, Port])
+                fun(Index) ->
+                    merle_client_sup:start_child([Host, Port, Index])
                 end,
                 lists:seq(1, ConnectionsPerHost)
             )
@@ -41,9 +44,10 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
 
 
 exec(Key, Fun, Default, Now) ->
+    NumConnections = merle_cluster_dynamic:get_connections_per_server(),
     S = merle_cluster_dynamic:get_server(Key),
     exec_on_client(
-        merle_pool:get_client(round_robin, S),
+        merle_pool:get_client(round_robin, S, NumConnections),
         Key,
         Fun,
         Default,
