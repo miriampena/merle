@@ -19,8 +19,6 @@
 }).
 
 start_link() ->
-    log4erl:error("Merle pool STARTING!"),
-
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 delete(Name) ->
@@ -102,6 +100,8 @@ get_client(round_robin, Name, NumConnections) ->
 %%
 
 init([]) ->
+    log4erl:error("Merle pool STARTING!"),
+
     process_flag(trap_exit, true),
     ets:new(?PIDS_TABLE, [set, public, named_table, {read_concurrency, true}]),
     ets:new(?INDICES_TABLE, [set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),

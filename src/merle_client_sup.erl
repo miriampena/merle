@@ -7,8 +7,6 @@
 -behaviour(supervisor).
 
 start_link(Instances, ConnectionsPerInstance) ->
-    log4erl:error("Merle client sup STARTING!"),
-
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
 
     merle_cluster:configure(Instances, ConnectionsPerInstance),
@@ -19,6 +17,8 @@ start_child(N) ->
     supervisor:start_child(?MODULE, [N]).
 
 init([]) ->
+    log4erl:error("Merle client sup STARTING!"),
+
     MCDSpec = {mcd, {merle_client, start_link, []},
                 permanent, 5000, worker, dynamic},
     {ok, {{simple_one_for_one, 10, 10}, [MCDSpec]}}.

@@ -21,13 +21,13 @@
 
 
 start_link([Host, Port, Index]) ->
-    log4erl:error("Merle client ~p is STARTING", [[Host, Port, Index]]),
-
     %TODO: get rid of registered process name
     gen_server:start_link({local, list_to_atom("merle_client_" ++ integer_to_list(Index))}, ?MODULE, [Host, Port, Index], []).
 
 
 init([Host, Port, Index]) ->
+    log4erl:error("Merle client ~p is STARTING", [[Host, Port, Index]]),
+
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
