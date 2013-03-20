@@ -165,7 +165,7 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
 handle_info({'EXIT', _, Reason}, S) ->
-    lager:info("Caught an exit signal ~p", [Reason]),
+    lager:error("Caught an exit signal ~p", [Reason]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
