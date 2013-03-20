@@ -90,9 +90,12 @@ get_client(round_robin, Name, NumConnections) ->
 
     case ets:lookup(?PIDS_TABLE, {Name, RRIndex}) of
         [] ->
-            {error, {no_client, Name, RRIndex}};
+            {error, no_client};
         [{_Key, Client}] ->
-            Client
+            case is_process_alive(Client) of
+                true -> Client;
+                false -> {error, client_dead}
+            end
     end.
 
 %%
