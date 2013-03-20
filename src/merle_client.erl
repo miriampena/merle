@@ -21,12 +21,11 @@
 
 
 start_link([Host, Port, Index]) ->
-    %TODO: get rid of registered process name
-    gen_server:start_link({local, list_to_atom("merle_client_" ++ integer_to_list(Index))}, ?MODULE, [Host, Port, Index], []).
+    gen_server:start_link(?MODULE, [Host, Port, Index], []).
 
 
 init([Host, Port, Index]) ->
-    io:format("Merle client ~p is STARTING", [[Host, Port, Index]]),
+    lager:info("Merle client ~p is STARTING", [[Host, Port, Index]]),
 
     erlang:process_flag(trap_exit, true),
 
@@ -152,7 +151,7 @@ handle_info('connect', #state{host = Host, port = Port, checked_out = true, sock
 %%  Handles down events from monitored process.  Need to check back in if this happens.
 %%
 handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
-    log4erl:info("merle_watcher caught a DOWN event"),
+    lager:info("merle_watcher caught a DOWN event"),
     
     true = erlang:demonitor(MonitorRef),
 
@@ -166,7 +165,7 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
 handle_info({'EXIT', _, Reason}, S) ->
-    io:format("Caught an exit signal ~p", [Reason]),
+    lager:info("Caught an exit signal ~p", [Reason]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
@@ -179,11 +178,11 @@ handle_cast(_Cast, S) ->
     
 
 terminate(_Reason, #state{socket = undefined}) ->
-    io:format("Merle watcher TERMINATING, socket is empty!"),
+    lager:info("Merle watcher TERMINATING, socket is empty!"),
     ok;
 
 terminate(_Reason, #state{socket = Socket}) ->
-    io:format("Merle watcher TERMINATING, killing socket!"),
+    lager:info("Merle watcher TERMINATING, killing socket!"),
     erlang:exit(Socket, watcher_died),
     ok.
 

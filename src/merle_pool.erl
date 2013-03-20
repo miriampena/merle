@@ -68,7 +68,7 @@ clean_locks() ->
         ?PIDS_TABLE
     ),
     
-    log4erl:error("Cleaned ~p merle locks on ~p valid connections", [Cleaned, Connections]),
+    lager:error("Cleaned ~p merle locks on ~p valid connections", [Cleaned, Connections]),
     
     {Cleaned, Connections}.
 
@@ -78,7 +78,7 @@ shift_rr_index(Name, NumConnections) ->
         ets:update_counter(?INDICES_TABLE, {Name, rr_index}, {2, 1, NumConnections, 1})
     catch
         _:_ ->
-            log4erl:error("Error shifting merle index for name ~p", [Name]),
+            lager:error("Error shifting merle index for name ~p", [Name]),
             0
     end.
     
@@ -100,7 +100,7 @@ get_client(round_robin, Name, NumConnections) ->
 %%
 
 init([]) ->
-    io:format("Merle pool STARTING!"),
+    lager:info("Merle pool STARTING!"),
 
     process_flag(trap_exit, true),
     ets:new(?PIDS_TABLE, [set, public, named_table, {read_concurrency, true}]),
@@ -132,7 +132,7 @@ handle_call({join, Name, Index, Pid}, _From, S = #server_state{pools = Pools}) -
             {reply, no_such_group, S};
         true ->
             %TODO: delete this
-            log4erl:error("Client is joining pool ~p at index ~p", [Name, Index]),
+            lager:error("Client is joining pool ~p at index ~p", [Name, Index]),
 
             % insert new pid into the table
             ets:insert(?PIDS_TABLE, {{Name, Index}, Pid}),
@@ -148,14 +148,14 @@ handle_cast(_Cast, S) ->
     {noreply, S}.
 
 handle_info({'EXIT', Pid, Reason} , S) ->
-    io:format("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [[Pid, Reason]]),
+    lager:info("merle_pool: caught merle_client EXIT, this shouldn't happen, ~p", [[Pid, Reason]]),
     {noreply, S};
     
 handle_info(_Info, S) ->
     {noreply, S}.
 
 terminate(_Reason, #server_state{ periodic_lock_clean=PLC }) ->
-    io:format("Merle pool TERMINATING!"),
+    lager:info("Merle pool TERMINATING!"),
 
     ets:delete(?PIDS_TABLE),
     ets:delete(?INDICES_TABLE),
