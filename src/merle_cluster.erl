@@ -65,7 +65,7 @@ exec_on_client(Client, Key, Fun, Default, Now) ->
 
 
 exec_on_socket(no_socket, _Client, _Key, _Fun, Default) ->
-    lager:error("Designated merle connection has no socket, returning default value"),
+    lager:info("Designated merle connection has no socket, returning default value"),
     {no_socket, Default};
 exec_on_socket(busy, _Client, _Key, _Fun, Default) ->
     lager:info("Designated merle connection is in use, returning default value"),

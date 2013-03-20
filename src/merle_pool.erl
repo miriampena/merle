@@ -154,7 +154,7 @@ handle_info(_Info, S) ->
     {noreply, S}.
 
 terminate(_Reason, #server_state{ periodic_lock_clean=PLC }) ->
-    lager:info("Merle pool TERMINATING!"),
+    lager:error("Merle pool TERMINATING!"),
 
     ets:delete(?PIDS_TABLE),
     ets:delete(?INDICES_TABLE),
