@@ -131,8 +131,7 @@ handle_call({join, Name, Index, Pid}, _From, S = #server_state{pools = Pools}) -
         false ->
             {reply, no_such_group, S};
         true ->
-            %TODO: delete this
-            lager:error("Client is joining pool ~p at index ~p", [Name, Index]),
+            lager:info("Client is joining pool ~p at index ~p", [Name, Index]),
 
             % insert new pid into the table
             ets:insert(?PIDS_TABLE, {{Name, Index}, Pid}),

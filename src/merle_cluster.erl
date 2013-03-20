@@ -24,7 +24,7 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
         DynModuleEnd
     ]),
     
-    lager:error("dyn module str ~p", [ModuleString]),
+    lager:info("dyn module str ~p", [ModuleString]),
     
     {M, B} = dynamic_compile:from_string(ModuleString),
     code:load_binary(M, "", B),
@@ -58,7 +58,7 @@ exec_on_client({error, Error}, _Key, _Fun, Default, _Now) ->
     lager:error("Error finding merle client: ~r~n, returning default value", [Error]),
     {error_finding_client, Default};
 exec_on_client(undefined, _Key, _Fun, Default, _Now) ->
-    lager:error("Undefined merle client, returning default value"),
+    lager:warn("Undefined merle client, returning default value"),
     {undefined_client, Default};
 exec_on_client(Client, Key, Fun, Default, Now) ->
     exec_on_socket(merle_client:checkout(Client, self(), Now), Client, Key, Fun, Default).
@@ -68,7 +68,7 @@ exec_on_socket(no_socket, _Client, _Key, _Fun, Default) ->
     lager:error("Designated merle connection has no socket, returning default value"),
     {no_socket, Default};
 exec_on_socket(busy, _Client, _Key, _Fun, Default) ->
-    lager:error("Designated merle connection is in use, returning default value"),
+    lager:info("Designated merle connection is in use, returning default value"),
     {in_use, Default};
 exec_on_socket(Socket, Client, Key, Fun, Default) ->
     FinalValue = case Fun(Socket, Key) of
