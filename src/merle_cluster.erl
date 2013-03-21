@@ -55,7 +55,7 @@ exec(Key, Fun, Default, Now) ->
     ).
 
 exec_on_client({error, Error}, _Key, _Fun, Default, _Now) ->
-    lager:error("Error finding merle client: ~r~n, returning default value", [Error]),
+    lager:warn("Error finding merle client: ~p, returning default value", [Error]),
     {Error, Default};
 exec_on_client(undefined, _Key, _Fun, Default, _Now) ->
     lager:warn("Undefined merle client, returning default value"),
