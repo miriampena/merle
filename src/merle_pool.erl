@@ -89,8 +89,8 @@ clean_locks() ->
         {0, 0}, 
         L
     ),
-    
-    log4erl:error("Cleaned ~p merle locks on ~p valid connections", [Cleaned, Connections]),
+
+    lager:error("Cleaned ~p merle locks on ~p valid connections", [Cleaned, Connections]),
     
     {Cleaned, Connections}.
 
@@ -236,7 +236,7 @@ handle_cast(_Cast, S) ->
     {noreply, S}.
 
 handle_info({'EXIT', Pid, _} , S) ->
-    log4erl:error("Caught local_pg2 EXIT... leaving pg"),
+    lager:error("Caught local_pg2 EXIT... leaving pg"),
     del_member(Pid),
     {noreply, S};
     

@@ -24,7 +24,7 @@ start_link([Host, Port]) ->
 
 
 init([Host, Port]) ->
-    log4erl:info("Merle watcher initialized!"),
+    lager:info("Merle watcher initialized!"),
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
@@ -148,7 +148,7 @@ handle_info('connect', #state{host = Host, port = Port, checked_out = true, sock
 %%  Handles down events from monitored process.  Need to check back in if this happens.
 %%
 handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
-    log4erl:info("merle_watcher caught a DOWN event"),
+    lager:info("merle_watcher caught a DOWN event"),
     
     true = erlang:demonitor(MonitorRef),
 
@@ -172,11 +172,11 @@ handle_cast(_Cast, S) ->
     
 
 terminate(_Reason, #state{socket = undefined}) ->
-    log4erl:error("Merle watcher terminated, socket is empty!"),
+    lager:error("Merle watcher terminated, socket is empty!"),
     ok;
 
 terminate(_Reason, #state{socket = Socket}) ->
-    log4erl:error("Merle watcher terminated, killing socket!"),
+    lager:error("Merle watcher terminated, killing socket!"),
     erlang:exit(Socket, watcher_died),
     ok.
 
