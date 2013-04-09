@@ -334,7 +334,7 @@ init([Host, Port]) ->
         {ok, Socket} ->
             {ok, Socket};
         Error ->
-            lager:error("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
+            lager:warning("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
             ignore
     end.
 
