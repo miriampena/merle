@@ -130,8 +130,11 @@ handle_call(_Call, _From, S) ->
 handle_info('connect', #state{host = Host, port = Port, checked_out = true, socket = undefined} = State) ->
     case merle:connect(Host, Port) of
         {ok, Socket} ->
-
             {noreply, check_in_state(State#state{socket = Socket})};
+
+        ignore ->
+            timer:send_after(?RESTART_INTERVAL, self(), 'connect'),
+            {noreply, State};
 
         {error, Reason} ->
             error_logger:error_report([memcached_connection_error,
@@ -164,8 +167,11 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
+handle_info({'EXIT', _, normal}, S = #state{socket = undefined}) ->
+    {noreply, S};
+
 handle_info({'EXIT', _, Reason}, S) ->
-    lager:error("Caught an exit signal ~p", [Reason]),
+    lager:error("Caught an unexpected exit signal ~p", [Reason]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
