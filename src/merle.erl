@@ -330,7 +330,12 @@ init([Host, Port]) ->
 
     erlang:process_flag(trap_exit, true),
 
-    gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE).
+    case gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE) of
+        {ok, Socket} -> {ok, Socket};
+        Error ->
+            lager:error("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
+            {stop, failed_to_connect}
+    end.
 
 handle_call({stats}, _From, Socket) ->
     Reply = send_stats_cmd(Socket, iolist_to_binary([<<"stats">>]), ?DEFAULT_TIMEOUT),
