@@ -330,7 +330,13 @@ init([Host, Port]) ->
 
     erlang:process_flag(trap_exit, true),
 
-    gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE).
+    case gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE) of
+        {ok, Socket} ->
+            {ok, Socket};
+        Error ->
+            lager:warning("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
+            ignore
+    end.
 
 handle_call({stats}, _From, Socket) ->
     Reply = send_stats_cmd(Socket, iolist_to_binary([<<"stats">>]), ?DEFAULT_TIMEOUT),
@@ -469,7 +475,7 @@ handle_info({tcp_error, Socket, Reason}, Socket) ->
     {stop, {error, {tcp_error, Reason}}, Socket};
 
 handle_info({'EXIT', _, Reason}, Socket) ->
-    lager:warn("Exiting merle connection ~p", [Reason]),
+    lager:warning("Exiting merle connection ~p", [Reason]),
     {stop, normal, Socket};
 
 handle_info(_Info, State) -> {noreply, State}.
@@ -515,7 +521,7 @@ send_get_cmd(Socket, Cmd, Timeout) ->
 		[{_, Value}] -> {ok, Value};
 		[] -> {error, not_found};
 		{error, Error} ->
-            lager:warn("Encountered error from memcache; killing connection now: ~p", [Error]),
+            lager:warning("Encountered error from memcache; killing connection now: ~p", [Error]),
             erlang:exit(self(), Error),
             {error, Error}
     	end,
@@ -567,11 +573,11 @@ recv_simple_reply(Timeout) ->
         	inet:setopts(Socket, ?TCP_OPTS_ACTIVE),
         	parse_simple_response_line(Data); 
         {error, closed} ->
-            lager:warn("Encountered error while receiving simple reply from memcache; killing connection now."),
+            lager:warning("Encountered error while receiving simple reply from memcache; killing connection now."),
             erlang:exit(self(), connection_closed),
   			connection_closed
-    after Timeout ->
-        lager:warn("Encountered timeout while receiving simple reply from memcache; killing connection now."),
+    after Timeout -> 
+        lager:warning("Encountered timeout while receiving simple reply from memcache; killing connection now."),
         erlang:exit(self(), timeout),
         {error, timeout}
     end.

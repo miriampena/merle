@@ -9,6 +9,7 @@
 -record(state, {
     host,
     port,
+    index,
 
     socket,                 % memcached connection socket
 
@@ -19,23 +20,25 @@
 }).
 
 
-start_link([Host, Port]) ->
-    gen_server:start_link(?MODULE, [Host, Port], []).
+start_link([Host, Port, Index]) ->
+    gen_server:start_link(?MODULE, [Host, Port, Index], []).
 
 
-init([Host, Port]) ->
-    lager:info("Merle watcher initialized!"),
+init([Host, Port, Index]) ->
+    lager:info("Merle client ~p is STARTING", [[Host, Port, Index]]),
+
     erlang:process_flag(trap_exit, true),
 
     merle_pool:create({Host, Port}),
-    merle_pool:join({Host, Port}, self()),
+    merle_pool:join({Host, Port}, Index, self()),
 
     {
         ok,
         check_in_state(
             #state{
                 host = Host,
-                port = Port
+                port = Port,
+                index = Index
             }
         )
     }.
@@ -127,8 +130,11 @@ handle_call(_Call, _From, S) ->
 handle_info('connect', #state{host = Host, port = Port, checked_out = true, socket = undefined} = State) ->
     case merle:connect(Host, Port) of
         {ok, Socket} ->
-
             {noreply, check_in_state(State#state{socket = Socket})};
+
+        ignore ->
+            timer:send_after(?RESTART_INTERVAL, self(), 'connect'),
+            {noreply, State};
 
         {error, Reason} ->
             error_logger:error_report([memcached_connection_error,
@@ -161,6 +167,12 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
+handle_info({'EXIT', _, normal}, S) ->
+    {noreply, S};
+
+handle_info({'EXIT', _, Reason}, S) ->
+    lager:error("Caught an unexpected exit signal ~p", [Reason]),
+    {stop, Reason, S};
 
 handle_info(_Info, S) ->
     error_logger:warning_report([{merle_watcher, self()}, {unknown_info, _Info}]),
@@ -172,11 +184,11 @@ handle_cast(_Cast, S) ->
     
 
 terminate(_Reason, #state{socket = undefined}) ->
-    lager:error("Merle watcher terminated, socket is empty!"),
+    lager:error("Merle watcher TERMINATING, socket is empty!"),
     ok;
 
 terminate(_Reason, #state{socket = Socket}) ->
-    lager:error("Merle watcher terminated, killing socket!"),
+    lager:error("Merle watcher TERMINATING, killing socket!"),
     erlang:exit(Socket, watcher_died),
     ok.
 
