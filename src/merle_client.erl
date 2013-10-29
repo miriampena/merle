@@ -52,7 +52,6 @@ init([Host, Port, Index]) ->
 
 
 checkout(Pid, BorrowerPid, CheckoutTime) ->
-    lager:error("Merle client message queue len ~p", [erlang:process_info(Pid, message_queue_len)]),
     gen_server:call(Pid, {checkout, BorrowerPid, CheckoutTime}).
 
 
