@@ -4,6 +4,8 @@
 
 -export([checkout/3, checkin/1, get_checkout_state/1, get_socket/1]).
 
+-include_lib("canary/include/canary.hrl").
+
 -define(RESTART_INTERVAL, 5000). %% retry each 5 seconds.
 
 -record(state, {
