@@ -219,7 +219,7 @@ record_call_latency(OpName, CallTime) ->
             slide,
             60
         },
-        process_info(self(), message_queue_len)
+        begin {_, L} = process_info(self(), message_queue_len), L end
     ),
 
     canary:notify_metric(
