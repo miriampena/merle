@@ -56,15 +56,15 @@ checkout(Pid, BorrowerPid, CheckoutTime) ->
 
 
 checkin(Pid) ->
-    gen_server:call(Pid, checkin).
+    gen_server:call(Pid, {checkin, dru:pytime()}).
 
 
 get_checkout_state(Pid) ->
-    gen_server:call(Pid, get_checkout_state).
+    gen_server:call(Pid, {get_checkout_state, dru:pytime()}).
 
 
 get_socket(Pid) ->
-    gen_server:call(Pid, get_socket).
+    gen_server:call(Pid, {get_socket, dru:pytime()}).
 
 
 %%
@@ -77,14 +77,15 @@ get_socket(Pid) ->
 %%  Bind a monitor with the checking out process.
 %%
 handle_call({checkout, _, CheckoutTime}, _From, State = #state{checked_out = true}) ->
-    record_checkout_latency(CheckoutTime),
+    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     {reply, busy, State};
 handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket = undefined}) ->
     % NOTE: initializes socket when none found
-    record_checkout_latency(CheckoutTime),
+    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     {reply, no_socket, connect_socket(State)};
 handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket = Socket, monitor = PrevMonitor}) ->
-    record_checkout_latency(CheckoutTime),
+    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
+
     % handle any previously existing monitors
     case PrevMonitor of
         undefined ->
@@ -100,7 +101,9 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
 %%
 %%  Handle checkin events.  Demonitor perviously monitored process, and mark as checked in
 %%
-handle_call(checkin, _From, State = #state{monitor = PrevMonitor}) ->
+handle_call({checkin, CallTime}, _From, State = #state{monitor = PrevMonitor}) ->
+    record_call_latency(<<"ClientCheckin">>, CallTime),
+
     case PrevMonitor of
         undefined -> ok;
         _ ->
@@ -113,14 +116,18 @@ handle_call(checkin, _From, State = #state{monitor = PrevMonitor}) ->
 %%
 %%  Returns checkout state for the client in question
 %%
-handle_call(get_checkout_state, _From, State = #state{checked_out = CheckedOut, check_out_time = CheckOutTime}) ->
+handle_call({get_checkout_state, CallTime}, _From, State = #state{checked_out = CheckedOut, check_out_time = CheckOutTime}) ->
+    record_call_latency(<<"ClientGetCheckoutState">>, CallTime),
+
     {reply, {CheckedOut, CheckOutTime}, State};
 
 
 %%
 %%  Returns socket for the client in question
 %%
-handle_call(get_socket, _From, State = #state{socket = Socket}) ->
+handle_call({get_socket, CallTime}, _From, State = #state{socket = Socket}) ->
+    record_call_latency(<<"ClientGetSocket">>, CallTime),
+
     {reply, Socket, State};
 
 
@@ -200,19 +207,33 @@ terminate(_Reason, #state{socket = Socket}) ->
 %%  HELPER FUNCTIONS
 %%
 
-record_checkout_latency(CheckoutTime) ->
+record_call_latency(OpName, CallTime) ->
     canary:notify_metric(
         {
             histogram,
             #canary_metric_name{
                 category = <<"Merle">>,
-                label = <<"ClientCheckoutLatency">>,
+                label = [OpName, <<"MsgQLen">>],
+                units = <<"length">>
+            },
+            slide,
+            60
+        },
+        process_info(self(), message_queue_len)
+    ),
+
+    canary:notify_metric(
+        {
+            histogram,
+            #canary_metric_name{
+                category = <<"Merle">>,
+                label = [OpName, <<"Latency">>],
                 units = <<"milliseconds">>
             },
             slide,
             60
         },
-        trunc((dru:pytime() - CheckoutTime) * 1000)
+        trunc((dru:pytime() - CallTime) * 1000)
     ).
 
 
