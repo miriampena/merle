@@ -46,22 +46,24 @@ configure(MemcachedHosts, ConnectionsPerHost) ->
 exec(Key, Fun, Default, Now) ->
     NumConnections = merle_cluster_dynamic:get_connections_per_host(),
     S = merle_cluster_dynamic:get_server(Key),
+    canary:time_call(<<"MerleExecOnClient">>, fun() -> 
     exec_on_client(
-        merle_pool:get_client(round_robin, S, NumConnections),
+        canary:time_call(<<"MerleGetClient">>, fun() -> merle_pool:get_client(round_robin, S, NumConnections) end),
         Key,
         Fun,
         Default,
         Now
-    ).
+    ) end).
 
 exec_on_client({error, Error}, _Key, _Fun, Default, _Now) ->
-    lager:warning("Error finding merle client: ~p, returning default value", [Error]),
+    lager:error("Error finding merle client: ~p, returning default value", [Error]),
     {Error, Default};
 exec_on_client(undefined, _Key, _Fun, Default, _Now) ->
-    lager:warning("Undefined merle client, returning default value"),
+    lager:error("Undefined merle client, returning default value"),
     {undefined_client, Default};
 exec_on_client(Client, Key, Fun, Default, Now) ->
-    exec_on_socket(merle_client:checkout(Client, self(), Now), Client, Key, Fun, Default).
+    canary:time_call(<<"MerleExecOnSocket">>, fun() ->
+    exec_on_socket(canary:time_call(<<"MerleClientCheckout">>, fun() -> merle_client:checkout(Client, self(), Now) end), Client, Key, Fun, Default) end).
 
 exec_on_socket(no_socket, _Client, _Key, _Fun, Default) ->
     lager:info("Designated merle connection has no socket, returning default value"),

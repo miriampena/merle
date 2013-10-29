@@ -50,6 +50,7 @@ init([Host, Port, Index]) ->
 
 
 checkout(Pid, BorrowerPid, CheckoutTime) ->
+    lager:error("Merle client message queue len ~p", [erlang:process_info(Pid, message_queue_len)]),
     gen_server:call(Pid, {checkout, BorrowerPid, CheckoutTime}).
 
 
@@ -74,12 +75,15 @@ get_socket(Pid) ->
 %%  Handle checkout events.  Mark this server as used, and note the time.
 %%  Bind a monitor with the checking out process.
 %%
-handle_call({checkout, _, _}, _From, State = #state{checked_out = true}) ->
+handle_call({checkout, _, CheckoutTime}, _From, State = #state{checked_out = true}) ->
+    record_checkout_latency(CheckoutTime),
     {reply, busy, State};
-handle_call({checkout, _, _}, _From, State = #state{socket = undefined}) ->
+handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket = undefined}) ->
     % NOTE: initializes socket when none found
+    record_checkout_latency(CheckoutTime),
     {reply, no_socket, connect_socket(State)};
 handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket = Socket, monitor = PrevMonitor}) ->
+    record_checkout_latency(CheckoutTime),
     % handle any previously existing monitors
     case PrevMonitor of
         undefined ->
@@ -91,7 +95,6 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
     Monitor = erlang:monitor(process, BorrowerPid),
 
     {reply, Socket, check_out_state(State#state{monitor = Monitor}, CheckoutTime)};
-
 
 %%
 %%  Handle checkin events.  Demonitor perviously monitored process, and mark as checked in
@@ -195,6 +198,22 @@ terminate(_Reason, #state{socket = Socket}) ->
 %%
 %%  HELPER FUNCTIONS
 %%
+
+record_checkout_latency(CheckoutTime) ->
+    canary:notify_metric(
+        {
+            histogram,
+            #canary_metric_name{
+                category = <<"Merle">>,
+                label = <<"ClientCheckoutLatency">>,
+                units = <<"milliseconds">>
+            },
+            slide,
+            60
+        },
+        trunc((dru:pytime() - CheckoutTime) * 1000)
+    ).
+
 
 connect_socket(State = #state{}) ->
     self() ! 'connect',
