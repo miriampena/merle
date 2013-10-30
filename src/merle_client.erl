@@ -114,7 +114,7 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
 
         false ->
             {reply, no_socket, connect_socket(State)}
-    end.
+    end;
 
 
 %%
