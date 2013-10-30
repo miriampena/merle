@@ -162,7 +162,7 @@ handle_info(
         fun() ->
             case merle:connect(Host, Port) of
                 {ok, Socket} ->
-                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, {link_socket, Socket});
+                    MerleClientPid ! {link_socket, Socket};
 
                 ignore ->
                     erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect');
