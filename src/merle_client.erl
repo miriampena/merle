@@ -4,8 +4,6 @@
 
 -export([checkout/3, checkin/1, get_checkout_state/1, get_socket/1]).
 
--include_lib("canary/include/canary.hrl").
-
 -define(RESTART_INTERVAL, 5000). %% retry each 5 seconds.
 
 -record(state, {
@@ -57,15 +55,15 @@ checkout(Pid, BorrowerPid, CheckoutTime) ->
 
 
 checkin(Pid) ->
-    gen_server:call(Pid, {checkin, dru:pytime()}).
+    gen_server:call(Pid, {checkin}).
 
 
 get_checkout_state(Pid) ->
-    gen_server:call(Pid, {get_checkout_state, dru:pytime()}).
+    gen_server:call(Pid, {get_checkout_state}).
 
 
 get_socket(Pid) ->
-    gen_server:call(Pid, {get_socket, dru:pytime()}).
+    gen_server:call(Pid, {get_socket}).
 
 
 %%
@@ -77,13 +75,11 @@ get_socket(Pid) ->
 %%  Handle checkout events.  Mark this server as used, and note the time.
 %%  Bind a monitor with the checking out process.
 %%
-handle_call({checkout, _, CheckoutTime}, _From, State = #state{checked_out = true}) ->
-    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
+handle_call({checkout, _, _CheckoutTime}, _From, State = #state{checked_out = true}) ->
     lager:info("Checkout: busy"),
     {reply, busy, State};
-handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket_creator = SocketCreator, socket = undefined}) ->
+handle_call({checkout, _, _CheckoutTime}, _From, State = #state{socket_creator = SocketCreator, socket = undefined}) ->
     % NOTE: initializes socket when none found
-    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     lager:info("Checkout: no socket"),
 
     {
@@ -94,7 +90,6 @@ handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket_creator = 
         end
     };
 handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket = Socket, monitor = PrevMonitor}) ->
-    record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     lager:info("Checkout: ok"),
 
     % NOTE: handle race condition of a dead socket somehow still being referenced
@@ -120,8 +115,7 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
 %%
 %%  Handle checkin events.  Demonitor perviously monitored process, and mark as checked in
 %%
-handle_call({checkin, CallTime}, _From, State = #state{monitor = PrevMonitor}) ->
-    record_call_latency(<<"ClientCheckin">>, CallTime),
+handle_call({checkin}, _From, State = #state{monitor = PrevMonitor}) ->
     lager:info("Checkin"),
 
     case PrevMonitor of
@@ -136,18 +130,14 @@ handle_call({checkin, CallTime}, _From, State = #state{monitor = PrevMonitor}) -
 %%
 %%  Returns checkout state for the client in question
 %%
-handle_call({get_checkout_state, CallTime}, _From, State = #state{checked_out = CheckedOut, check_out_time = CheckOutTime}) ->
-    record_call_latency(<<"ClientGetCheckoutState">>, CallTime),
-
+handle_call({get_checkout_state}, _From, State = #state{checked_out = CheckedOut, check_out_time = CheckOutTime}) ->
     {reply, {CheckedOut, CheckOutTime}, State};
 
 
 %%
 %%  Returns socket for the client in question
 %%
-handle_call({get_socket, CallTime}, _From, State = #state{socket = Socket}) ->
-    record_call_latency(<<"ClientGetSocket">>, CallTime),
-
+handle_call({get_socket}, _From, State = #state{socket = Socket}) ->
     {reply, Socket, State};
 
 
@@ -276,36 +266,6 @@ terminate(_Reason, #state{socket = Socket}) ->
 %%
 %%  HELPER FUNCTIONS
 %%
-
-record_call_latency(OpName, CallTime) ->
-    canary:notify_metric(
-        {
-            histogram,
-            #canary_metric_name{
-                category = <<"Merle">>,
-                label = [OpName, <<"MsgQLen">>],
-                units = <<"length">>
-            },
-            slide,
-            60
-        },
-        begin {_, L} = process_info(self(), message_queue_len), L end
-    ),
-
-    canary:notify_metric(
-        {
-            histogram,
-            #canary_metric_name{
-                category = <<"Merle">>,
-                label = [OpName, <<"Latency">>],
-                units = <<"milliseconds">>
-            },
-            slide,
-            60
-        },
-        trunc((dru:pytime() - CallTime) * 1000)
-    ).
-
 
 connect_socket(State = #state{}) ->
     self() ! 'connect',
