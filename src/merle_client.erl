@@ -244,12 +244,8 @@ handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreato
     lager:info("Socket creator exited"),
     {noreply, connect_socket(S#state{socket_creator = undefined}), ?RESTART_INTERVAL};
 
-handle_info({'EXIT', _, normal}, S) ->
+handle_info({'EXIT', _, _}, S) ->
     {noreply, S};
-
-handle_info(Msg = {'EXIT', _, Reason}, S) ->
-    lager:error("Unexplained EXIT ~p", [Msg]),
-    {stop, Reason, S};
 
 handle_info(_Info, S) ->
     {noreply, S}.
