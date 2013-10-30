@@ -79,10 +79,13 @@ get_socket(Pid) ->
 %%
 handle_call({checkout, _, CheckoutTime}, _From, State = #state{checked_out = true}) ->
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
+    lager:error("Checkout: busy"),
     {reply, busy, State};
 handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket_creator = SocketCreator, socket = undefined}) ->
     % NOTE: initializes socket when none found
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
+    lager:error("Checkout: no socket"),
+
     {
         reply, no_socket,
         case SocketCreator of
@@ -92,6 +95,7 @@ handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket_creator = 
     };
 handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket = Socket, monitor = PrevMonitor}) ->
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
+    lager:error("Checkout: ok"),
 
     % handle any previously existing monitors
     case PrevMonitor of
@@ -110,6 +114,7 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
 %%
 handle_call({checkin, CallTime}, _From, State = #state{monitor = PrevMonitor}) ->
     record_call_latency(<<"ClientCheckin">>, CallTime),
+    lager:error("Checkin"),
 
     case PrevMonitor of
         undefined -> ok;
@@ -155,6 +160,7 @@ handle_info(
             socket = undefined
     } = State)
     ->
+    lager:error("Connect"),
 
     MerleClientPid = self(),
 
@@ -162,12 +168,15 @@ handle_info(
         fun() ->
             case merle:connect(Host, Port) of
                 {ok, Socket} ->
+                    lager:error("Connect - socket creator - initialized"),
                     MerleClientPid ! {link_socket, Socket};
 
                 ignore ->
+                    lager:error("Connect - socket creator - ignore"),
                     erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect');
 
                 {error, Reason} ->
+                    lager:error("Connect - socket creator - error"),
                     error_logger:error_report([memcached_connection_error,
                         {reason, Reason},
                         {host, Host},
@@ -190,6 +199,7 @@ handle_info(
             socket = undefined
     } = State)
     ->
+    lager:error("Link socket"),
 
     State2 = case is_process_alive(Socket) of
         true ->
@@ -207,7 +217,7 @@ handle_info(
 %%  Handles down events from monitored process.  Need to kill socket if this happens.
 %%
 handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=MonitorRef} = S) ->
-    lager:info("merle_watcher caught a DOWN event"),
+    lager:error("merle_client caught a DOWN event"),
 
     case Socket of
         undefined -> ok;
@@ -225,15 +235,18 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=Monitor
 %%  Handles exit events on the memcached socket.  If this occurs need to reconnect.
 %%
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
+    lager:error("Socket exited"),
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
 handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
+    lager:error("Socket creator exited"),
     {noreply, connect_socket(S#state{socket_creator = undefined}), ?RESTART_INTERVAL};
 
 handle_info({'EXIT', _, normal}, S) ->
     {noreply, S};
 
-handle_info({'EXIT', _, Reason}, S) ->
+handle_info(Msg = {'EXIT', _, Reason}, S) ->
+    lager:error("Unexplained EXIT ~p", [Msg]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
