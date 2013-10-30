@@ -242,7 +242,8 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
 
 handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
     lager:info("Socket creator exited"),
-    {noreply, connect_socket(S#state{socket_creator = undefined}), ?RESTART_INTERVAL};
+    erlang:send_after(?RESTART_INTERVAL, self(), 'connect'),
+    {noreply, S#state{socket_creator = undefined}, ?RESTART_INTERVAL};
 
 handle_info({'EXIT', _, _}, S) ->
     {noreply, S};
