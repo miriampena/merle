@@ -203,10 +203,12 @@ handle_info(
 
     State2 = case is_process_alive(Socket) of
         true ->
+            lager:error("Link socket - socket is alive"),
             link(Socket),
             Socket ! ping,
             check_in_state(State#state{socket = Socket});
         false ->
+            lager:error("Link socket - socket is dead"),
             connect_socket(State)
     end,
 
