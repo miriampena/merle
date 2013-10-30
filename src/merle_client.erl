@@ -14,6 +14,7 @@
     index,
 
     socket,                 % memcached connection socket
+    socket_creator,
 
     monitor,                % represents a monitor bw checking out process and me
 
@@ -79,10 +80,16 @@ get_socket(Pid) ->
 handle_call({checkout, _, CheckoutTime}, _From, State = #state{checked_out = true}) ->
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     {reply, busy, State};
-handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket = undefined}) ->
+handle_call({checkout, _, CheckoutTime}, _From, State = #state{socket_creator = SocketCreator, socket = undefined}) ->
     % NOTE: initializes socket when none found
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
-    {reply, no_socket, connect_socket(State)};
+    {
+        reply, no_socket,
+        case SocketCreator of
+            undefined -> connect_socket(State);
+            _ -> State
+        end
+    };
 handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket = Socket, monitor = PrevMonitor}) ->
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
 
@@ -138,38 +145,79 @@ handle_call(_Call, _From, S) ->
 %%
 %%  Handles 'connect' messages -> initializes socket on host/port, saving a reference
 %%
-handle_info('connect', #state{host = Host, port = Port, checked_out = true, socket = undefined} = State) ->
-    case merle:connect(Host, Port) of
-        {ok, Socket} ->
-            {noreply, check_in_state(State#state{socket = Socket})};
+handle_info(
+    'connect',
+    #state{
+            host = Host,
+            port = Port,
+            checked_out = true,
+            socket_creator = undefined,
+            socket = undefined
+    } = State)
+    ->
 
-        ignore ->
-            timer:send_after(?RESTART_INTERVAL, self(), 'connect'),
-            {noreply, State};
+    MerleClientPid = self(),
 
-        {error, Reason} ->
-            error_logger:error_report([memcached_connection_error,
-                {reason, Reason},
-                {host, Host},
-                {port, Port},
-                {restarting_in, ?RESTART_INTERVAL}]
-            ),
-	        
-	        timer:send_after(?RESTART_INTERVAL, self(), 'connect'),
-	        
-            {noreply, State}
-   end;
+    SocketCreatorPid = spawn_link(
+        fun() ->
+            case merle:connect(Host, Port) of
+                {ok, Socket} ->
+                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, {link_socket, Socket});
+
+                ignore ->
+                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect');
+
+                {error, Reason} ->
+                    error_logger:error_report([memcached_connection_error,
+                        {reason, Reason},
+                        {host, Host},
+                        {port, Port},
+                        {restarting_in, ?RESTART_INTERVAL}]
+                    ),
+
+                    timer:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect')
+            end
+        end
+    ),
+
+    {no_reply, State#state{socket_creator = SocketCreatorPid}};
+
+
+handle_info(
+    {link_socket, Socket},
+    #state{
+            checked_out = true,
+            socket = undefined
+    } = State)
+    ->
+
+    State2 = case is_process_alive(Socket) of
+        true ->
+            Socket ! ping,
+            State#state{socket = Socket};
+        false ->
+            State
+    end,
+
+    {no_reply, State2};
 
 
 %%
-%%  Handles down events from monitored process.  Need to check back in if this happens.
+%%  Handles down events from monitored process.  Need to kill socket if this happens.
 %%
-handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
+handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=MonitorRef} = S) ->
     lager:info("merle_watcher caught a DOWN event"),
-    
-    true = erlang:demonitor(MonitorRef),
 
-    {noreply, check_in_state(S#state{monitor = undefined})};
+    case Socket of
+        undefined -> ok;
+        _ ->
+            unlink(Socket),
+            exit(Socket, kill)
+    end,
+
+    erlang:demonitor(MonitorRef),
+
+    {noreply, connect_socket(S#state{monitor = undefined}), ?RESTART_INTERVAL};
 
 
 %%
@@ -178,15 +226,16 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{monitor=MonitorRef} = S) ->
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
+handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
+    {noreply, connect_socket(S#state{socket_creator = undefined}), ?RESTART_INTERVAL};
+
 handle_info({'EXIT', _, normal}, S) ->
     {noreply, S};
 
 handle_info({'EXIT', _, Reason}, S) ->
-    lager:error("Caught an unexpected exit signal ~p", [Reason]),
     {stop, Reason, S};
 
 handle_info(_Info, S) ->
-    error_logger:warning_report([{merle_watcher, self()}, {unknown_info, _Info}]),
     {noreply, S}.
     
 

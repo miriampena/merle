@@ -313,7 +313,7 @@ connect() ->
 
 %% @doc connect to memcached
 connect(Host, Port) ->
-	start_link(Host, Port).
+	start(Host, Port).
 
 %% @doc disconnect from memcached
 disconnect(Ref) ->
@@ -321,6 +321,9 @@ disconnect(Ref) ->
 	ok.
 
 %% @private
+start(Host, Port) ->
+    gen_server2:start(?MODULE, [Host, Port], []).
+
 start_link(Host, Port) ->
     gen_server2:start_link(?MODULE, [Host, Port], []).
 
@@ -332,7 +335,7 @@ init([Host, Port]) ->
 
     case gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE) of
         {ok, Socket} ->
-            {ok, Socket};
+            {ok, Socket, 5000};
         Error ->
             lager:warning("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
             ignore
@@ -476,6 +479,13 @@ handle_info({tcp_error, Socket, Reason}, Socket) ->
 
 handle_info({'EXIT', _, Reason}, Socket) ->
     lager:warning("Exiting merle connection ~p", [Reason]),
+    {stop, normal, Socket};
+
+handle_info(ping, Socket) ->
+    {no_reply, Socket};
+
+handle_info(timeout, Socket) ->
+    lager:error("Merle connection initialization timed out ~p", [Socket]),
     {stop, normal, Socket};
 
 handle_info(_Info, State) -> {noreply, State}.
