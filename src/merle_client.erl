@@ -193,10 +193,11 @@ handle_info(
 
     State2 = case is_process_alive(Socket) of
         true ->
+            link(Socket),
             Socket ! ping,
-            State#state{socket = Socket};
+            check_in_state(State#state{socket = Socket});
         false ->
-            State
+            connect_socket(State)
     end,
 
     {noreply, State2};
