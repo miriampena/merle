@@ -482,7 +482,7 @@ handle_info({'EXIT', _, Reason}, Socket) ->
     {stop, normal, Socket};
 
 handle_info(ping, Socket) ->
-    {no_reply, Socket};
+    {noreply, Socket};
 
 handle_info(timeout, Socket) ->
     lager:error("Merle connection initialization timed out ~p", [Socket]),

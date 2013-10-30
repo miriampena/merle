@@ -180,7 +180,7 @@ handle_info(
         end
     ),
 
-    {no_reply, State#state{socket_creator = SocketCreatorPid}};
+    {noreply, State#state{socket_creator = SocketCreatorPid}};
 
 
 handle_info(
@@ -199,7 +199,7 @@ handle_info(
             State
     end,
 
-    {no_reply, State2};
+    {noreply, State2};
 
 
 %%
