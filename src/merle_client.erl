@@ -97,17 +97,25 @@ handle_call({checkout, BorrowerPid, CheckoutTime}, _From, State = #state{socket 
     record_call_latency(<<"ClientCheckout">>, CheckoutTime),
     lager:info("Checkout: ok"),
 
-    % handle any previously existing monitors
-    case PrevMonitor of
-        undefined ->
-            ok;
-        _ ->
-            true = erlang:demonitor(PrevMonitor)
-    end,
+    % NOTE: handle race condition of a dead socket somehow still being referenced
+    case is_process_alive(Socket) of
+        true ->
+            % handle any previously existing monitors
+            case PrevMonitor of
+                undefined ->
+                    ok;
+                _ ->
+                    true = erlang:demonitor(PrevMonitor)
+            end,
 
-    Monitor = erlang:monitor(process, BorrowerPid),
+            Monitor = erlang:monitor(process, BorrowerPid),
 
-    {reply, Socket, check_out_state(State#state{monitor = Monitor}, CheckoutTime)};
+            {reply, Socket, check_out_state(State#state{monitor = Monitor}, CheckoutTime)};
+
+        false ->
+            {reply, no_socket, connect_socket(State)}
+    end.
+
 
 %%
 %%  Handle checkin events.  Demonitor perviously monitored process, and mark as checked in
