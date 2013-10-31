@@ -170,8 +170,7 @@ handle_info(
                     MerleClientPid ! {link_socket, Socket};
 
                 ignore ->
-                    lager:info("Connect - socket creator - ignore"),
-                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect');
+                    lager:info("Connect - socket creator - ignore");
 
                 {error, Reason} ->
                     lager:info("Connect - socket creator - error"),
@@ -180,9 +179,7 @@ handle_info(
                         {host, Host},
                         {port, Port},
                         {restarting_in, ?RESTART_INTERVAL}]
-                    ),
-
-                    timer:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect')
+                    )
             end
         end
     ),
@@ -241,7 +238,7 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
 handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
     lager:info("Socket creator exited"),
     erlang:send_after(?RESTART_INTERVAL, self(), 'connect'),
-    {noreply, S#state{socket_creator = undefined}, ?RESTART_INTERVAL};
+    {noreply, S#state{socket_creator = undefined}};
 
 handle_info({'EXIT', _, _}, S) ->
     {noreply, S};
