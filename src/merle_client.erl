@@ -203,29 +203,21 @@ handle_info(
     ->
     lager:info("Link socket"),
 
-    State2 = case is_process_alive(Socket) of
-        true ->
-            lager:info("Link socket - socket is alive"),
-            link(Socket),
-            Socket ! ping,
-            check_in_state(State#state{socket = Socket});
-        false ->
-            lager:info("Link socket - socket is dead"),
-            connect_socket(State)
-    end,
-
     case TRef of
         undefined -> ok;
         _ -> erlang:cancel_timer(TRef)
     end,
 
-    {noreply, State2#state{socket_creator_recon_tref = undefined}};
+    link(Socket),
+    Socket ! ping,
+
+    {noreply, check_in_state(State#state{socket = Socket, socket_creator_recon_tref = undefined})};
 
 
 %%
 %%  Handles down events from monitored process.  Need to kill socket if this happens.
 %%
-handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=MonitorRef} = S) ->
+handle_info({'DOWN', MonitorRef, _, _, _}, #state{checked_out=true, socket=Socket, monitor=MonitorRef} = S) ->
     lager:info("merle_client caught a DOWN event"),
 
     case Socket of
