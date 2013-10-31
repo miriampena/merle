@@ -174,7 +174,7 @@ handle_info(
 
                 ignore ->
                     lager:info("Connect - socket creator - ignore"),
-                    erlang:send_after(?RESTART_INTERVAL, self(), 'connect');
+                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect');
 
                 {error, Reason} ->
                     lager:info("Connect - socket creator - error"),
@@ -184,7 +184,7 @@ handle_info(
                         {port, Port},
                         {restarting_in, ?RESTART_INTERVAL}]
                     ),
-                    erlang:send_after(?RESTART_INTERVAL, self(), 'connect')
+                    erlang:send_after(?RESTART_INTERVAL, MerleClientPid, 'connect')
 
             end
         end
@@ -237,7 +237,7 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=Monitor
 
     erlang:demonitor(MonitorRef),
 
-    {noreply, connect_socket(S#state{monitor = undefined}), ?RESTART_INTERVAL};
+    {noreply, connect_socket(S#state{monitor = undefined})};
 
 
 %%
@@ -245,14 +245,14 @@ handle_info({'DOWN', MonitorRef, _, _, _}, #state{socket=Socket, monitor=Monitor
 %%
 handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     lager:info("Socket exited"),
-    {noreply, connect_socket(S), ?RESTART_INTERVAL};
+    {noreply, connect_socket(S)};
 
 handle_info({'EXIT', SocketCreator, normal}, S = #state{socket_creator = SocketCreator}) ->
     lager:info("Socket creator exited normally"),
     {noreply, S#state{socket_creator = undefined}};
 
 handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
-    lager:info("Socket creator exited abnormally"),
+    lager:error("Socket creator exited abnormally"),
 
     % in the abnormal case, we'll want to spawn a reconnect message
     TRef = erlang:send_after(?RESTART_INTERVAL, self(), 'connect'),
