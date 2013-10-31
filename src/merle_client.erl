@@ -4,7 +4,7 @@
 
 -export([checkout/3, checkin/1, get_checkout_state/1, get_socket/1]).
 
--define(RESTART_INTERVAL, 5000). %% retry each 5 seconds.
+-define(RESTART_INTERVAL, 1000). %% retry each 1 second.
 
 -record(state, {
     host,
@@ -13,6 +13,9 @@
 
     socket,                 % memcached connection socket
     socket_creator,
+
+    socket_creator_recon_tref,  % tref which sends a reconnect message in the event some
+                                % socket creation pid exits unexpectedly
 
     monitor,                % represents a monitor bw checking out process and me
 
@@ -170,7 +173,8 @@ handle_info(
                     MerleClientPid ! {link_socket, Socket};
 
                 ignore ->
-                    lager:info("Connect - socket creator - ignore");
+                    lager:info("Connect - socket creator - ignore"),
+                    erlang:send_after(?RESTART_INTERVAL, self(), 'connect');
 
                 {error, Reason} ->
                     lager:info("Connect - socket creator - error"),
@@ -179,7 +183,9 @@ handle_info(
                         {host, Host},
                         {port, Port},
                         {restarting_in, ?RESTART_INTERVAL}]
-                    )
+                    ),
+                    erlang:send_after(?RESTART_INTERVAL, self(), 'connect')
+
             end
         end
     ),
@@ -191,7 +197,8 @@ handle_info(
     {link_socket, Socket},
     #state{
             checked_out = true,
-            socket = undefined
+            socket = undefined,
+            socket_creator_recon_tref = TRef
     } = State)
     ->
     lager:info("Link socket"),
@@ -207,7 +214,12 @@ handle_info(
             connect_socket(State)
     end,
 
-    {noreply, State2};
+    case TRef of
+        undefined -> ok;
+        _ -> erlang:cancel_timer(TRef)
+    end,
+
+    {noreply, State2#state{socket_creator_recon_tref = undefined}};
 
 
 %%
@@ -235,10 +247,17 @@ handle_info({'EXIT', Socket, _}, S = #state{socket = Socket}) ->
     lager:info("Socket exited"),
     {noreply, connect_socket(S), ?RESTART_INTERVAL};
 
-handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
-    lager:info("Socket creator exited"),
-    erlang:send_after(?RESTART_INTERVAL, self(), 'connect'),
+handle_info({'EXIT', SocketCreator, normal}, S = #state{socket_creator = SocketCreator}) ->
+    lager:info("Socket creator exited normally"),
     {noreply, S#state{socket_creator = undefined}};
+
+handle_info({'EXIT', SocketCreator, _}, S = #state{socket_creator = SocketCreator}) ->
+    lager:info("Socket creator exited abnormally"),
+
+    % in the abnormal case, we'll want to spawn a reconnect message
+    TRef = erlang:send_after(?RESTART_INTERVAL, self(), 'connect'),
+
+    {noreply, S#state{socket_creator_recon_tref = TRef, socket_creator = undefined}};
 
 handle_info({'EXIT', _, _}, S) ->
     {noreply, S};
