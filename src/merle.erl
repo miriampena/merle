@@ -332,7 +332,7 @@ init([Host, Port]) ->
 
     case gen_tcp:connect(Host, Port, ?TCP_OPTS_ACTIVE) of
         {ok, Socket} ->
-            {ok, Socket};
+            {ok, Socket, 5000};
         Error ->
             lager:warning("Failed to connect to memcache: ~p", [{Host, Port, Error}]),
             ignore
